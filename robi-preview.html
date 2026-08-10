@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Robi — Watchface Preview</title>
+<style>
+  :root {
+    --accent: #55efef;
+    --accent-glow: #55efef88;
+    --accent-dim: #2f8f8f;
+    --bg: #050608;
+    --text: #ffffff;
+    --dim: #9aa0a6;
+    --panel: #3c4045;
+    --panel-light: #4d5259;
+    --panel-dark: #26282b;
+    --body-hi: #838a92;
+    --body-mid: #52565c;
+    --body-lo: #26282b;
+    --visor: #0c1012;
+  }
+  html, body {
+    margin: 0; min-height: 100%; background: #202225;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    padding: 22px 12px 40px; box-sizing: border-box;
+  }
+  h1 { color: #ddd; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; margin: 0 0 16px; }
+
+  .watch-case {
+    width: 240px; height: 268px;
+    background: linear-gradient(155deg, #1c1c1e, #0d0d0e);
+    border-radius: 34px; padding: 20px 16px;
+    box-shadow: inset 0 1px 1px #444, 0 20px 40px rgba(0,0,0,0.55);
+    flex-shrink: 0;
+  }
+  .screen {
+    width: 200px; height: 228px;
+    background: radial-gradient(ellipse at 50% 30%, #0c0e11 0%, var(--bg) 75%);
+    border-radius: 10px; position: relative; overflow: hidden;
+    cursor: pointer; user-select: none;
+  }
+
+  .robot-wrap { position: absolute; top: 4px; left: 0; width: 100%; height: 112px; }
+  .scene { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; overflow: hidden; }
+  .figure { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }
+
+  .ground-shadow {
+    position: absolute; left: 50%; bottom: 4px; width: 60px; height: 8px;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.55) 0%, transparent 75%);
+    transform: translateX(-50%); z-index: 0; transition: width 0.2s, opacity 0.2s;
+  }
+
+  .antenna-pole { position: absolute; left: 50%; top: 1px; width: 2px; height: 9px; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 4px var(--accent-glow); }
+  .antenna-dot { position: absolute; left: 50%; top: -4px; width: 6px; height: 6px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #baffff, var(--accent) 70%); box-shadow: 0 0 7px var(--accent-glow); transform: translateX(-3px); }
+  .antenna-ring { position: absolute; left: 50%; top: 9px; width: 10px; height: 4px; border-radius: 50%; background: var(--body-lo); box-shadow: inset 0 1px 2px rgba(0,0,0,.6); transform: translateX(-5px); }
+
+  .head {
+    position: absolute; top: 10px; left: 50%; width: 64px; height: 46px;
+    background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 45%, var(--body-lo) 100%);
+    border-radius: 17px 17px 15px 15px;
+    box-shadow: 0 5px 9px rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.18), inset 0 -8px 12px rgba(0,0,0,0.35);
+    transform: translateX(-50%);
+  }
+  .head-shine {
+    position: absolute; top: 5px; left: 9px; width: 20px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,0.22); filter: blur(0.5px);
+  }
+  .visor {
+    position: absolute; top: 15px; left: 50%; width: 52px; height: 20px;
+    background: var(--visor); border-radius: 10px;
+    box-shadow: inset 0 3px 5px rgba(0,0,0,0.65), inset 0 -1px 0 rgba(255,255,255,0.05);
+    transform: translateX(-50%);
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+  }
+  .eye {
+    width: 14px; height: 16px; border-radius: 4px;
+    background: radial-gradient(circle at 35% 28%, #c8ffff, var(--accent) 62%, var(--accent-dim) 100%);
+    box-shadow: 0 0 8px var(--accent-glow), 0 0 2px #fff;
+    transition: height 0.09s ease, margin-top 0.09s ease;
+  }
+  .mouth { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 14px; height: 2px; border-radius: 1px; background: var(--accent-dim); box-shadow: 0 0 3px var(--accent-glow); transition: opacity 0.08s linear, width 0.15s ease, height 0.15s ease, border-radius 0.15s ease; }
+  .mouth.smile {
+    width: 18px; height: 9px; background: transparent;
+    border: 2px solid var(--accent-dim); border-top: none;
+    border-radius: 0 0 16px 16px;
+    box-shadow: 0 0 4px var(--accent-glow);
+  }
+
+  .torso {
+    position: absolute; top: 55px; left: 50%; width: 50px; height: 34px;
+    background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 45%, var(--body-lo) 100%);
+    border-radius: 15px;
+    box-shadow: 0 5px 9px rgba(0,0,0,0.4), inset 0 2px 0 rgba(255,255,255,0.15), inset 0 -9px 13px rgba(0,0,0,0.35);
+    transform: translateX(-50%);
+  }
+  .chest-panel {
+    position: absolute; top: 6px; left: 50%; width: 34px; height: 13px; border-radius: 7px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0));
+    transform: translateX(-50%);
+  }
+  .chest-light-halo {
+    position: absolute; top: 6px; left: 50%; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--accent-glow); filter: blur(2px);
+    transform: translateX(-50%); animation: pulse 2.2s ease-in-out infinite;
+  }
+  .chest-light {
+    position: absolute; top: 9px; left: 50%; width: 7px; height: 7px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #d6ffff, var(--accent) 70%);
+    box-shadow: 0 0 5px 1px var(--accent-glow);
+    transform: translateX(-50%); animation: pulse 2.2s ease-in-out infinite;
+  }
+  .chest-vent {
+    position: absolute; bottom: 6px; width: 7px; height: 2px; border-radius: 1px;
+    background: rgba(0,0,0,0.4); box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .chest-vent.v1 { left: 12px; }
+  .chest-vent.v2 { left: 24px; }
+  @keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+  .arm, .leg {
+    position: absolute;
+    background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 50%, var(--body-lo) 100%);
+    border-radius: 6px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .arm { top: 57px; width: 10px; height: 26px; }
+  .arm.left { left: calc(50% - 36px); transform-origin: top center; }
+  .arm.right { left: calc(50% + 26px); transform-origin: top center; }
+  .leg { top: 87px; width: 12px; height: 24px; }
+  .leg.left { left: calc(50% - 15px); transform-origin: top center; }
+  .leg.right { left: calc(50% + 3px); transform-origin: top center; }
+
+  .joint-ball {
+    position: absolute; top: -4px; left: 50%; width: 10px; height: 10px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--body-hi), var(--body-lo) 75%);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.4);
+    transform: translateX(-50%);
+  }
+  .cuff {
+    position: absolute; bottom: 6px; left: 0; width: 100%; height: 2px; border-radius: 1px;
+    background: var(--accent-dim); box-shadow: 0 0 3px var(--accent-glow);
+  }
+  .cap {
+    position: absolute; bottom: -3px; left: 50%; width: calc(100% + 4px); height: 8px; border-radius: 4px;
+    background: linear-gradient(165deg, var(--body-hi), var(--body-lo));
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    transform: translateX(-50%);
+  }
+
+  /* ---- road ---- */
+  .road {
+    position: absolute; left: 0; bottom: 6px; width: 100%; height: 6px;
+    background: linear-gradient(180deg, #4a4d52, #2b2d30);
+  }
+  .road-dashes {
+    position: absolute; left: 0; bottom: 8.5px; width: 200%; height: 2px;
+    background-image: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 26px);
+    filter: drop-shadow(0 0 2px var(--accent-glow));
+  }
+
+  /* ---- stairs (scrolling diagonal treadmill effect) ---- */
+  .stairs-bg {
+    position: absolute; left: -40px; top: -40px; width: 280px; height: 220px;
+    background:
+      repeating-linear-gradient(135deg,
+        var(--panel-dark) 0 16px,
+        var(--panel) 16px 18px,
+        var(--accent) 18px 20px,
+        transparent 20px 40px);
+    opacity: 0.9;
+  }
+  .stairs-fade {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 55%, transparent 40%, var(--bg) 88%);
+  }
+
+  /* ---- bed ---- */
+  .bed-frame {
+    position: absolute;
+    background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 45%, var(--body-lo) 100%);
+    border-radius: 10px;
+    box-shadow: 0 5px 10px rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.14), inset 0 -8px 12px rgba(0,0,0,0.35);
+  }
+  .bed-leg {
+    position: absolute; width: 5px; height: 8px; border-radius: 0 0 2px 2px;
+    background: linear-gradient(180deg, var(--body-mid), var(--body-lo));
+  }
+  .bed-mattress {
+    position: absolute; background: linear-gradient(180deg, #f0f0f0, #c7c9cc);
+    border-radius: 6px; box-shadow: inset 0 1px 2px rgba(255,255,255,0.5), inset 0 -3px 6px rgba(0,0,0,0.1);
+  }
+  .bed-stitch {
+    position: absolute; height: 1px; background: rgba(0,0,0,0.12);
+  }
+  .bed-pillow {
+    position: absolute; background: linear-gradient(170deg, #ffffff, #dcdfe2);
+    border-radius: 7px; box-shadow: 0 2px 4px rgba(0,0,0,0.2), inset 0 -3px 5px rgba(0,0,0,0.06);
+  }
+  .bed-pillow-crease {
+    position: absolute; height: 1px; background: rgba(0,0,0,0.1); border-radius: 1px;
+  }
+  .bed-blanket {
+    position: absolute; background: linear-gradient(170deg, var(--accent), var(--accent-dim));
+    border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.25), inset 0 2px 0 rgba(255,255,255,0.25);
+  }
+  .bed-blanket-fold {
+    position: absolute; height: 2px; border-radius: 1px; background: rgba(0,0,0,0.12);
+  }
+  .sleep-body {
+    position: absolute;
+    background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 50%, var(--body-lo) 100%);
+    border-radius: 11px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.15), inset 0 -6px 9px rgba(0,0,0,0.3);
+  }
+  .sleep-visor {
+    position: absolute; background: var(--visor); border-radius: 6px;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.6);
+  }
+  .sleep-eye { position: absolute; width: 7px; height: 2px; background: var(--accent-dim); border-radius: 1px; }
+  .sleep-chest {
+    position: absolute; width: 6px; height: 6px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #bdf6f6, var(--accent-dim) 75%);
+    box-shadow: 0 0 4px var(--accent-glow);
+  }
+  .sleep-z {
+    position: absolute; color: #eef1f4; font-weight: 800;
+    text-shadow: 0 0 6px rgba(255,255,255,0.3);
+  }
+  .bed-shadow {
+    position: absolute; background: radial-gradient(ellipse, rgba(0,0,0,0.5) 0%, transparent 75%);
+  }
+
+  .decor { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; overflow: hidden; }
+  .confetti { position: absolute; width: 5px; height: 5px; border-radius: 1px; }
+  .rain { position: absolute; width: 2px; height: 9px; background: linear-gradient(180deg, transparent, #6fd0ef); border-radius: 1px; }
+  .sun {
+    position: absolute; top: 4px; right: 30px; width: 12px; height: 12px; border-radius: 50%;
+    background: radial-gradient(circle, #fff6c9, #ffd23f 70%);
+    box-shadow: 0 0 10px 3px #ffd23f66;
+  }
+
+  .bubble {
+    position: absolute; top: -20px; left: 58%; background: #fff; color: #111; font-size: 11px; font-weight: 700;
+    padding: 5px 9px; border-radius: 10px; white-space: nowrap; opacity: 0;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+    transform: scale(0.6) translateY(6px);
+    transition: opacity 0.18s cubic-bezier(.34,1.56,.64,1), transform 0.28s cubic-bezier(.34,1.56,.64,1);
+    z-index: 4;
+  }
+  .bubble::after { content: ''; position: absolute; bottom: -6px; left: 10px; border-width: 6px 6px 0 0; border-style: solid; border-color: #fff transparent transparent transparent; }
+  .bubble.show { opacity: 1; transform: scale(1) translateY(0); }
+
+  .time {
+    position: absolute; top: 122px; width: 100%; text-align: center;
+    font-size: 46px; font-weight: 700; color: var(--text); letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 18px rgba(255,255,255,0.08);
+  }
+  .row { position: absolute; top: 172px; width: 100%; display: flex; justify-content: space-between; padding: 0 8px; box-sizing: border-box; font-size: 14px; font-weight: 700; color: var(--accent); }
+  .day { position: absolute; bottom: 24px; width: 100%; text-align: center; font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  .date { position: absolute; bottom: 6px; width: 100%; text-align: center; font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+
+  .state-label { margin-top: 14px; color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; min-height: 16px; }
+  .controls { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 340px; }
+  button {
+    background: #1e1e1e; color: #ddd; border: 1px solid #444; border-radius: 20px;
+    padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  button.active { background: var(--accent); color: #003333; border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+  .hint { margin-top: 14px; color: #888; font-size: 12px; text-align: center; max-width: 300px; }
+</style>
+</head>
+<body>
+
+<h1>Robi — Pebble Time 2 preview</h1>
+
+<div class="watch-case">
+  <div class="screen" id="screen">
+    <div class="robot-wrap" id="robotWrap">
+      <div class="scene" id="scene"></div>
+      <div class="ground-shadow" id="groundShadow"></div>
+
+      <div class="figure" id="figure">
+        <div class="antenna-ring"></div>
+        <div class="antenna-pole"></div>
+        <div class="antenna-dot"></div>
+
+        <div class="leg left" id="legL">
+          <div class="joint-ball"></div>
+          <div class="cuff"></div>
+          <div class="cap"></div>
+        </div>
+        <div class="leg right" id="legR">
+          <div class="joint-ball"></div>
+          <div class="cuff"></div>
+          <div class="cap"></div>
+        </div>
+
+        <div class="torso" id="torso">
+          <div class="chest-panel"></div>
+          <div class="chest-light-halo"></div>
+          <div class="chest-light"></div>
+          <div class="chest-vent v1"></div>
+          <div class="chest-vent v2"></div>
+        </div>
+
+        <div class="arm left" id="armL">
+          <div class="joint-ball"></div>
+          <div class="cuff"></div>
+          <div class="cap"></div>
+        </div>
+        <div class="arm right" id="armR">
+          <div class="joint-ball"></div>
+          <div class="cuff"></div>
+          <div class="cap"></div>
+        </div>
+
+        <div class="head" id="head">
+          <div class="head-shine"></div>
+          <div class="visor" id="eyes">
+            <div class="eye" id="eyeL"></div>
+            <div class="eye" id="eyeR"></div>
+          </div>
+          <div class="mouth" id="mouth"></div>
+        </div>
+      </div>
+
+      <div class="bubble" id="bubble">Hello!</div>
+      <div class="decor" id="decor"></div>
+    </div>
+
+    <div class="time" id="time">--:--</div>
+    <div class="row"><div id="steps">0 steps (0%)</div><div id="weather">--°</div></div>
+    <div class="day" id="day">Day</div>
+    <div class="date" id="date">Mon 00</div>
+  </div>
+</div>
+
+<div class="state-label" id="stateLabel">IDLE</div>
+
+<div class="controls">
+  <button data-state="idle" class="active">Idle</button>
+  <button data-state="walking">Walking</button>
+  <button data-state="running">Running</button>
+  <button data-state="stairsUp">Stairs Up</button>
+  <button data-state="stairsDown">Stairs Down</button>
+  <button data-state="goal">Reached Goal</button>
+  <button data-state="sun">Sunny</button>
+  <button data-state="rain">Rainy</button>
+  <button data-state="cold">Cold/Snow</button>
+  <button data-state="sleepy">Night (Bed)</button>
+  <button data-state="auto">Auto (random)</button>
+  <button id="aiToggle">AI greetings: off (demo)</button>
+</div>
+
+<div class="hint">
+  Smooth, continuous motion now — not stepped frames. Walking/running scroll
+  a road; stairs scroll a diagonal "treadmill" pattern behind a climbing
+  robot; night puts it to bed. Double-tap the screen fast for a greeting.
+  <br><br>
+  "AI greetings" toggle below is a <b>local simulation only</b> — a browser
+  file can't safely hold a real API key. The real version (in the firmware
+  + phone app) actually calls Claude for a fresh line each time; see the
+  README for setup.
+</div>
+
+<script>
+  const STEP_GOAL = 10000;
+  let fakeSteps = 6432;
+  let fakeTemp = 21;
+
+  const screen = document.getElementById('screen');
+  const robotWrap = document.getElementById('robotWrap');
+  const scene = document.getElementById('scene');
+  const figure = document.getElementById('figure');
+  const groundShadow = document.getElementById('groundShadow');
+  const head = document.getElementById('head');
+  const torso = document.getElementById('torso');
+  const armL = document.getElementById('armL');
+  const armR = document.getElementById('armR');
+  const legL = document.getElementById('legL');
+  const legR = document.getElementById('legR');
+  const eyeL = document.getElementById('eyeL');
+  const eyeR = document.getElementById('eyeR');
+  const mouth = document.getElementById('mouth');
+  const decor = document.getElementById('decor');
+  const bubble = document.getElementById('bubble');
+  const stateLabel = document.getElementById('stateLabel');
+
+  let state = 'idle';
+  let stateStartTime = performance.now();
+  let lastFrameTime = performance.now();
+  let autoMode = false;
+  let autoTimer = null;
+  let goalTimer = null;
+  let lastTapTime = 0;
+  let speechTimeout = null;
+  let greetIndex = 0;
+  let isGreeting = false;
+  let aiDemoMode = false;
+
+  const aiDemoLines = [
+    () => `Nice, ${fakeSteps} steps!`,
+    () => `${fakeTemp}\u00b0 out there today`,
+    () => {
+      const h = new Date().getHours();
+      return (h >= 22 || h < 6) ? 'Up late, huh?' : 'Good to see you!';
+    },
+    () => 'Keep going, almost there!',
+    () => 'You got this today',
+    () => `${Math.round((fakeSteps / STEP_GOAL) * 100)}% to your goal`,
+  ];
+
+  function pickAiDemoLine() {
+    const fn = aiDemoLines[Math.floor(Math.random() * aiDemoLines.length)];
+    return fn();
+  }
+  let isBlinking = false;
+  let nextBlinkAt = performance.now() + 3000;
+
+  let roadDashEl = null;
+  let stairsBgEl = null;
+  let stairScroll = 0;
+
+  const confettiParticles = [];
+  const rainDrops = [];
+
+  const labels = {
+    idle: 'Idle', walking: 'Walking', running: 'Running',
+    stairsUp: 'Stairs — Up', stairsDown: 'Stairs — Down',
+    goal: 'Goal Reached!', sun: 'Sunny (idle)', rain: 'Rainy (idle)',
+    cold: 'Cold / Snow (idle)', sleepy: 'Night — Sleeping'
+  };
+
+  const ease = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // easeInOutQuad
+
+  function setEye(h) {
+    if (isBlinking) return;
+    eyeL.style.height = h + 'px';
+    eyeR.style.height = h + 'px';
+  }
+
+  function showFigure(visible) { figure.style.display = visible ? 'block' : 'none'; }
+  function clearDecor() { decor.innerHTML = ''; confettiParticles.length = 0; rainDrops.length = 0; }
+  function clearScene() { scene.innerHTML = ''; roadDashEl = null; stairsBgEl = null; }
+
+  function resetPose() {
+    robotWrap.style.transform = '';
+    head.style.transform = 'translateX(-50%)';
+    torso.style.transform = 'translateX(-50%)';
+    armL.style.transform = '';
+    armR.style.transform = '';
+    legL.style.transform = '';
+    legR.style.transform = '';
+    mouth.style.opacity = 1;
+    mouth.style.width = '';
+    mouth.classList.remove('smile');
+    groundShadow.style.opacity = 1;
+    groundShadow.style.width = '60px';
+    clearDecor();
+    clearScene();
+    showFigure(true);
+  }
+
+  // ---------- scenery ----------
+  function spawnRoad() {
+    clearScene();
+    const road = document.createElement('div');
+    road.className = 'road';
+    scene.appendChild(road);
+    const dashes = document.createElement('div');
+    dashes.className = 'road-dashes';
+    scene.appendChild(dashes);
+    roadDashEl = dashes;
+  }
+
+  function spawnStairsScene() {
+    clearScene();
+    const bg = document.createElement('div');
+    bg.className = 'stairs-bg';
+    scene.appendChild(bg);
+    const fade = document.createElement('div');
+    fade.className = 'stairs-fade';
+    scene.appendChild(fade);
+    stairsBgEl = bg;
+    stairScroll = 0;
+  }
+
+  function spawnBed() {
+    clearScene();
+    showFigure(false);
+    groundShadow.style.opacity = 0;
+
+    const bedW = 128, bedH = 30, bedX = 100 - bedW / 2, bedY = 76;
+
+    // soft contact shadow under the whole bed
+    const shadow = document.createElement('div');
+    shadow.className = 'bed-shadow';
+    Object.assign(shadow.style, { left: (bedX - 4) + 'px', top: (bedY + bedH + 14) + 'px', width: (bedW + 8) + 'px', height: '10px' });
+    scene.appendChild(shadow);
+
+    // headboard (taller panel behind the pillow end)
+    const headboard = document.createElement('div');
+    headboard.className = 'bed-frame';
+    Object.assign(headboard.style, { left: (bedX - 6) + 'px', top: (bedY - 16) + 'px', width: '14px', height: (bedH + 28) + 'px' });
+    scene.appendChild(headboard);
+
+    // frame
+    const frame = document.createElement('div');
+    frame.className = 'bed-frame';
+    Object.assign(frame.style, { left: (bedX - 2) + 'px', top: (bedY - 2) + 'px', width: (bedW + 4) + 'px', height: (bedH + 10) + 'px' });
+    scene.appendChild(frame);
+
+    // legs
+    [bedX + 2, bedX + bedW - 6].forEach(x => {
+      const leg = document.createElement('div');
+      leg.className = 'bed-leg';
+      Object.assign(leg.style, { left: x + 'px', top: (bedY + bedH + 8) + 'px' });
+      scene.appendChild(leg);
+    });
+
+    // mattress + stitch lines for texture
+    const mattress = document.createElement('div');
+    mattress.className = 'bed-mattress';
+    Object.assign(mattress.style, { left: bedX + 'px', top: bedY + 'px', width: bedW + 'px', height: bedH + 'px' });
+    scene.appendChild(mattress);
+    [0.33, 0.66].forEach(f => {
+      const stitch = document.createElement('div');
+      stitch.className = 'bed-stitch';
+      Object.assign(stitch.style, { left: (bedX + 4) + 'px', top: (bedY + bedH * f) + 'px', width: (bedW - 8) + 'px' });
+      scene.appendChild(stitch);
+    });
+
+    // pillow with a soft crease
+    const pillow = document.createElement('div');
+    pillow.className = 'bed-pillow';
+    Object.assign(pillow.style, { left: (bedX + 4) + 'px', top: (bedY - 8) + 'px', width: '32px', height: '17px' });
+    scene.appendChild(pillow);
+    const crease = document.createElement('div');
+    crease.className = 'bed-pillow-crease';
+    Object.assign(crease.style, { left: (bedX + 10) + 'px', top: (bedY - 1) + 'px', width: '20px' });
+    scene.appendChild(crease);
+
+    // sleeping robot: same shaded-panel language as the standing figure -
+    // a torso capsule, a head with a mini visor and closed-eye slits, and a
+    // dim chest light instead of the awake bright pulse
+    const body = document.createElement('div');
+    body.className = 'sleep-body';
+    body.id = 'sleepBody';
+    Object.assign(body.style, { left: (bedX + 32) + 'px', top: (bedY - 4) + 'px', width: '68px', height: '19px' });
+    scene.appendChild(body);
+
+    const chest = document.createElement('div');
+    chest.className = 'sleep-chest';
+    Object.assign(chest.style, { left: (bedX + 50) + 'px', top: (bedY + 3) + 'px' });
+    scene.appendChild(chest);
+
+    const sleepHead = document.createElement('div');
+    sleepHead.className = 'sleep-body';
+    Object.assign(sleepHead.style, { left: (bedX + 8) + 'px', top: (bedY - 9) + 'px', width: '28px', height: '25px' });
+    scene.appendChild(sleepHead);
+
+    const visor = document.createElement('div');
+    visor.className = 'sleep-visor';
+    Object.assign(visor.style, { left: (bedX + 12) + 'px', top: (bedY - 1) + 'px', width: '20px', height: '9px' });
+    scene.appendChild(visor);
+
+    [15, 24].forEach(x => {
+      const eye = document.createElement('div');
+      eye.className = 'sleep-eye';
+      Object.assign(eye.style, { left: (bedX + x) + 'px', top: (bedY + 2.5) + 'px' });
+      scene.appendChild(eye);
+    });
+
+    // blanket with a fold line for a little dimension
+    const blanket = document.createElement('div');
+    blanket.className = 'bed-blanket';
+    Object.assign(blanket.style, { left: (bedX + 28) + 'px', top: (bedY + bedH - 9) + 'px', width: (bedW - 32) + 'px', height: '9px' });
+    scene.appendChild(blanket);
+    const fold = document.createElement('div');
+    fold.className = 'bed-blanket-fold';
+    Object.assign(fold.style, { left: (bedX + 34) + 'px', top: (bedY + bedH - 5) + 'px', width: (bedW - 44) + 'px' });
+    scene.appendChild(fold);
+
+    ['zSmall', 'zBig'].forEach((id, i) => {
+      const z = document.createElement('div');
+      z.className = 'sleep-z';
+      z.id = id;
+      z.textContent = i === 0 ? 'z' : 'Z';
+      Object.assign(z.style, { left: (bedX + 38 + i * 12) + 'px', top: (bedY - 32 - i * 12) + 'px', fontSize: (10 + i * 5) + 'px' });
+      scene.appendChild(z);
+    });
+  }
+
+  function spawnSun() {
+    clearDecor();
+    const sun = document.createElement('div');
+    sun.className = 'sun';
+    decor.appendChild(sun);
+  }
+
+  // ---------- particle systems ----------
+  function spawnConfettiBurst() {
+    clearDecor();
+    const colors = ['#55efef', '#ffd23f', '#ff5fa2', '#7dffb3', '#ff9f5f'];
+    for (let i = 0; i < 16; i++) {
+      const el = document.createElement('div');
+      el.className = 'confetti';
+      el.style.background = colors[i % colors.length];
+      decor.appendChild(el);
+      confettiParticles.push({
+        el,
+        x: 70 + Math.random() * 60,
+        y: 15 + Math.random() * 10,
+        vx: (Math.random() - 0.5) * 60,
+        vy: -60 - Math.random() * 40,
+        rot: Math.random() * 360,
+        vrot: (Math.random() - 0.5) * 300,
+        life: 0,
+        maxLife: 1.4 + Math.random() * 0.6
+      });
+    }
+  }
+
+  function updateConfetti(dt) {
+    for (let i = confettiParticles.length - 1; i >= 0; i--) {
+      const p = confettiParticles[i];
+      p.vy += 140 * dt; // gravity
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vrot * dt;
+      p.life += dt;
+      const fade = Math.max(0, 1 - p.life / p.maxLife);
+      p.el.style.transform = `translate(${p.x}px, ${p.y}px) rotate(${p.rot}deg)`;
+      p.el.style.opacity = fade;
+      if (p.life > p.maxLife) {
+        p.el.remove();
+        confettiParticles.splice(i, 1);
+      }
+    }
+  }
+
+  function ensureRainDrops() {
+    if (rainDrops.length) return;
+    for (let i = 0; i < 5; i++) {
+      const el = document.createElement('div');
+      el.className = 'rain';
+      decor.appendChild(el);
+      rainDrops.push({ el, x: 40 + i * 24 + Math.random() * 8, y: Math.random() * -20, speed: 90 + Math.random() * 30 });
+    }
+  }
+
+  function updateRain(dt) {
+    ensureRainDrops();
+    for (const d of rainDrops) {
+      d.y += d.speed * dt;
+      if (d.y > 40) { d.y = -10; d.x = 40 + Math.random() * 90; }
+      d.el.style.transform = `translate(${d.x}px, ${d.y}px)`;
+    }
+  }
+
+  // ---------- pose functions (continuous, time-based) ----------
+  function poseIdle(t) {
+    const breathe = Math.sin(t * 1.4) * 1.2;
+    robotWrap.style.transform = `translateY(${breathe}px)`;
+  }
+
+  function poseWalking(t, speedMult) {
+    const freq = 6 * speedMult;
+    const swing = Math.sin(t * freq) * 22 * speedMult;
+    const bob = Math.abs(Math.sin(t * freq)) * (3 * speedMult);
+    const lean = speedMult > 1 ? Math.sin(t * freq) * 2 : 0;
+    robotWrap.style.transform = `translateY(${-bob}px)`;
+    head.style.transform = `translateX(calc(-50% + ${lean}px))`;
+    torso.style.transform = `translateX(calc(-50% + ${lean}px))`;
+    armL.style.transform = `rotate(${swing}deg)`;
+    armR.style.transform = `rotate(${-swing}deg)`;
+    legL.style.transform = `rotate(${-swing}deg)`;
+    legR.style.transform = `rotate(${swing}deg)`;
+    groundShadow.style.width = (60 - Math.abs(Math.sin(t * freq)) * 10) + 'px';
+    if (roadDashEl) roadDashEl.style.transform = `translateX(${-((t * 90 * speedMult) % 36)}px)`;
+  }
+
+  function poseStairs(t, goingUp) {
+    const freq = 5.2;
+    const swing = Math.sin(t * freq) * 26;
+    const lean = goingUp ? 6 : -6;
+    robotWrap.style.transform = `translateY(${Math.abs(Math.sin(t * freq)) * -2}px)`;
+    head.style.transform = `translateX(-50%) rotate(${lean}deg)`;
+    torso.style.transform = `translateX(-50%) rotate(${lean}deg)`;
+    legL.style.transform = `rotate(${-swing}deg)`;
+    legR.style.transform = `rotate(${swing}deg)`;
+    armL.style.transform = `rotate(${swing * 0.55}deg)`;
+    armR.style.transform = `rotate(${-swing * 0.55}deg)`;
+    if (stairsBgEl) {
+      stairScroll += (goingUp ? -70 : 70) * (1 / 60);
+      stairsBgEl.style.transform = `translate(${stairScroll * 0.4}px, ${stairScroll}px)`;
+    }
+  }
+
+  function poseGoal(t) {
+    const bounce = Math.abs(Math.sin(t * 5)) * 6;
+    robotWrap.style.transform = `translateY(${-bounce}px)`;
+    const raise = Math.min(1, t / 0.3);
+    const armAngle = -150 * ease(raise);
+    armL.style.transform = `rotate(${armAngle}deg)`;
+    armR.style.transform = `rotate(${-armAngle}deg)`;
+    setEyeForced(20);
+    mouth.style.width = '24px';
+    groundShadow.style.opacity = 0.5;
+  }
+
+  function poseCold(t) {
+    const shiver = Math.sin(t * 16) * 2;
+    head.style.transform = `translateX(calc(-50% + ${shiver}px))`;
+    torso.style.transform = `translateX(calc(-50% + ${shiver}px))`;
+    robotWrap.style.transform = `translateY(${Math.sin(t * 1.5) * 1}px)`;
+  }
+
+  function poseGeneric(t) {
+    const breathe = Math.sin(t * 1.2) * 1;
+    robotWrap.style.transform = `translateY(${breathe}px)`;
+  }
+
+  function setEyeForced(h) {
+    eyeL.style.height = h + 'px';
+    eyeR.style.height = h + 'px';
+  }
+
+  function applyStaticLook() {
+    switch (state) {
+      case 'walking': case 'running': spawnRoad(); setEyeForced(18); break;
+      case 'stairsUp': case 'stairsDown': spawnStairsScene(); setEyeForced(18); break;
+      case 'sleepy': spawnBed(); break;
+      case 'sun': setEyeForced(7); spawnSun(); break;
+      case 'rain': setEyeForced(11); break;
+      case 'goal': setEyeForced(20); spawnConfettiBurst(); break;
+      case 'cold': setEyeForced(15); break;
+      default: setEyeForced(18); break;
+    }
+  }
+
+  function setState(newState) {
+    state = newState;
+    stateStartTime = performance.now();
+    resetPose();
+    applyStaticLook();
+    stateLabel.textContent = labels[newState] || newState.toUpperCase();
+
+    document.querySelectorAll('.controls button').forEach(b => {
+      b.classList.toggle('active', b.dataset.state === newState);
+    });
+
+    if (newState === 'goal') {
+      if (goalTimer) clearTimeout(goalTimer);
+      goalTimer = setTimeout(() => { if (!autoMode) setState('idle'); else pickAutoState(); }, 2600);
+    }
+  }
+
+  function scheduleBlink(now) {
+    if (now < nextBlinkAt || isBlinking) return;
+    if (state === 'goal' || state === 'sleepy' || isGreeting) {
+      nextBlinkAt = now + 1500;
+      return;
+    }
+    isBlinking = true;
+    eyeL.style.height = '3px'; eyeR.style.height = '3px';
+    setTimeout(() => {
+      isBlinking = false;
+      applyStaticLook();
+      nextBlinkAt = now + 3000 + Math.random() * 3000;
+    }, 140);
+  }
+
+  function greet() {
+    if (state === 'sleepy') return;
+    isGreeting = true;
+
+    if (aiDemoMode) {
+      bubble.textContent = pickAiDemoLine();
+      bubble.classList.add('show');
+      armR.style.transform = 'rotate(-150deg)';
+      setEyeForced(20);
+
+      if (speechTimeout) clearTimeout(speechTimeout);
+      speechTimeout = setTimeout(() => {
+        bubble.classList.remove('show');
+        armR.style.transform = '';
+        isGreeting = false;
+        applyStaticLook();
+      }, 2600);
+      return;
+    }
+
+    // 50/50: either say hi with a bubble + wave, or just smile
+    const sayHi = Math.random() < 0.5;
+
+    if (sayHi) {
+      bubble.textContent = 'Hi!';
+      bubble.classList.add('show');
+      armR.style.transform = 'rotate(-150deg)';
+    } else {
+      mouth.style.width = '';
+      mouth.classList.add('smile');
+    }
+    setEyeForced(20);
+
+    if (speechTimeout) clearTimeout(speechTimeout);
+    speechTimeout = setTimeout(() => {
+      bubble.classList.remove('show');
+      mouth.classList.remove('smile');
+      armR.style.transform = '';
+      isGreeting = false;
+      applyStaticLook();
+    }, 1800);
+  }
+
+  function pickAutoState() {
+    const hour = new Date().getHours();
+    const night = hour >= 22 || hour < 6;
+    const pool = night ? ['sleepy'] : ['idle', 'sun', 'rain', 'cold'];
+    setState(pool[Math.floor(Math.random() * pool.length)]);
+  }
+
+  document.querySelectorAll('.controls button[data-state]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.state === 'auto') {
+        autoMode = !autoMode;
+        btn.classList.toggle('active', autoMode);
+        if (autoMode) { pickAutoState(); autoTimer = setInterval(pickAutoState, 5000); }
+        else { clearInterval(autoTimer); setState('idle'); }
+        return;
+      }
+      autoMode = false;
+      clearInterval(autoTimer);
+      setState(btn.dataset.state);
+    });
+  });
+
+  const aiToggleBtn = document.getElementById('aiToggle');
+  aiToggleBtn.addEventListener('click', () => {
+    aiDemoMode = !aiDemoMode;
+    aiToggleBtn.classList.toggle('active', aiDemoMode);
+    aiToggleBtn.textContent = aiDemoMode ? 'AI greetings: on (demo)' : 'AI greetings: off (demo)';
+  });
+
+  screen.addEventListener('click', () => {
+    const now = Date.now();
+    if (now - lastTapTime < 400) { greet(); lastTapTime = 0; }
+    else {
+      lastTapTime = now;
+      fakeSteps += Math.floor(Math.random() * 20) + 5;
+      updateSteps();
+    }
+  });
+
+  function updateTime() {
+    const now = new Date();
+    let h = now.getHours();
+    const m = String(now.getMinutes()).padStart(2, '0');
+    h = h % 12; if (h === 0) h = 12;
+    document.getElementById('time').textContent = `${h}:${m}`;
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    document.getElementById('day').textContent = days[now.getDay()];
+    document.getElementById('date').textContent = `${months[now.getMonth()]} ${String(now.getDate()).padStart(2,'0')}`;
+  }
+
+  function updateSteps() {
+    const pct = Math.min(100, Math.round((fakeSteps / STEP_GOAL) * 100));
+    const el = document.getElementById('steps');
+    el.textContent = fakeSteps >= STEP_GOAL ? `${fakeSteps} steps - Goal! ✓` : `${fakeSteps} steps (${pct}%)`;
+  }
+  function updateWeather() { document.getElementById('weather').textContent = `${fakeTemp}°`; }
+
+  // ---------- main animation loop ----------
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+    lastFrameTime = now;
+    const t = (now - stateStartTime) / 1000;
+
+    switch (state) {
+      case 'idle': poseIdle(t); break;
+      case 'walking': poseWalking(t, 1); break;
+      case 'running': poseWalking(t, 1.7); break;
+      case 'stairsUp': poseStairs(t, true); break;
+      case 'stairsDown': poseStairs(t, false); break;
+      case 'goal': poseGoal(t); break;
+      case 'cold': poseCold(t); break;
+      case 'sun': case 'rain': poseGeneric(t); break;
+      case 'sleepy': {
+        const body = document.getElementById('sleepBody');
+        if (body) body.style.transform = `scale(${1 + Math.sin(t * 1.2) * 0.02})`;
+        const zSmall = document.getElementById('zSmall');
+        const zBig = document.getElementById('zBig');
+        if (zSmall) { zSmall.style.transform = `translateY(${Math.sin(t * 1.3) * 4}px)`; zSmall.style.opacity = 0.5 + Math.sin(t * 1.3) * 0.4; }
+        if (zBig) { zBig.style.transform = `translateY(${Math.sin(t * 1.3 + 1) * 5}px)`; zBig.style.opacity = 0.5 + Math.sin(t * 1.3 + 1) * 0.4; }
+        break;
+      }
+    }
+
+    if (state === 'goal') updateConfetti(dt);
+    if (state === 'rain') updateRain(dt);
+
+    scheduleBlink(now);
+    requestAnimationFrame(frame);
+  }
+
+  updateTime();
+  updateSteps();
+  updateWeather();
+  setState('idle');
+  setInterval(updateTime, 1000);
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

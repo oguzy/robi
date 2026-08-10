@@ -1,17 +1,13 @@
-// ====== EDIT THIS: paste your free OpenWeatherMap API key here ======
-// Get one at https://openweathermap.org/api (free tier is enough)
-var API_KEY = "PASTE_YOUR_OPENWEATHERMAP_KEY_HERE";
-
-// "metric" = Celsius, "imperial" = Fahrenheit
-var UNITS = "metric";
-
-// ====== EDIT THIS: paste your Anthropic API key here for AI greetings ======
-// Get one at https://console.anthropic.com (separate from a claude.ai
-// account - this is a developer API key, billed per use, not tied to your
-// chat history or memory in any way). Leave the placeholder in place to
-// skip this feature entirely; the watch will just use its built-in
-// "Hi!"/smile reaction instead.
-var ANTHROPIC_API_KEY = "PASTE_YOUR_ANTHROPIC_API_KEY_HERE";
+// API keys and units are set from the phone app's Settings page (see
+// showConfiguration/webviewclosed below) and persisted in localStorage -
+// nothing to edit in this file. Get a free OpenWeatherMap key at
+// https://openweathermap.org/api and an Anthropic developer key (separate
+// from a claude.ai account, billed per use, no chat history/memory) at
+// https://console.anthropic.com. Leaving the Anthropic key blank just means
+// the watch uses its built-in "Hi!"/smile reaction instead of an AI one.
+var API_KEY = localStorage.getItem("openweather_key") || "";
+var UNITS = localStorage.getItem("units") || "metric"; // "metric" = Celsius, "imperial" = Fahrenheit
+var ANTHROPIC_API_KEY = localStorage.getItem("anthropic_key") || "";
 var ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"; // small & cheap, plenty for a one-line greeting
 
 var KEY_TEMPERATURE = 0;
@@ -63,7 +59,7 @@ function locationError(err) {
 }
 
 function getWeather() {
-  if (!API_KEY || API_KEY.indexOf("PASTE_YOUR") === 0) {
+  if (!API_KEY) {
     console.log("No OpenWeatherMap API key set yet - skipping weather fetch.");
     return;
   }
@@ -80,7 +76,7 @@ function getWeather() {
 // falls back to the built-in "Hi!"/smile reaction on its own, so there's
 // nothing to handle here on failure.
 function requestAiGreeting(steps, hour) {
-  if (!ANTHROPIC_API_KEY || ANTHROPIC_API_KEY.indexOf("PASTE_YOUR") === 0) {
+  if (!ANTHROPIC_API_KEY) {
     console.log("No Anthropic API key set - watch will use its built-in greeting.");
     return;
   }
@@ -145,6 +141,52 @@ function xhrRequest(url, type, callback) {
   xhr.send();
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function buildConfigPageUrl() {
+  var html = "<!DOCTYPE html><html><head><meta name='viewport' " +
+    "content='width=device-width,initial-scale=1'>" +
+    "<style>" +
+    "body{font-family:sans-serif;background:#0C1012;color:#fff;padding:16px}" +
+    "label{display:block;margin-top:16px;font-size:14px;color:#8fd6e8}" +
+    "input,select{width:100%;box-sizing:border-box;padding:8px;margin-top:4px;" +
+    "font-size:16px;border-radius:4px;border:1px solid #444;background:#1c2226;color:#fff}" +
+    "button{margin-top:24px;width:100%;padding:12px;font-size:16px;border:none;" +
+    "border-radius:4px;background:#00b3c6;color:#000;font-weight:bold}" +
+    "p{font-size:12px;color:#999}" +
+    "</style></head><body>" +
+    "<h2>Robi Settings</h2>" +
+    "<label>OpenWeatherMap API key</label>" +
+    "<input id='owkey' type='text' value='" + escapeHtml(API_KEY) + "' " +
+    "placeholder='leave blank to disable weather'>" +
+    "<p>Free key at openweathermap.org/api</p>" +
+    "<label>Units</label>" +
+    "<select id='units'>" +
+    "<option value='metric'" + (UNITS === "metric" ? " selected" : "") + ">Celsius</option>" +
+    "<option value='imperial'" + (UNITS === "imperial" ? " selected" : "") + ">Fahrenheit</option>" +
+    "</select>" +
+    "<label>Anthropic API key</label>" +
+    "<input id='aikey' type='text' value='" + escapeHtml(ANTHROPIC_API_KEY) + "' " +
+    "placeholder='leave blank to skip AI greetings'>" +
+    "<p>Developer key at console.anthropic.com (not your claude.ai login)</p>" +
+    "<button id='save'>Save</button>" +
+    "<script>" +
+    "document.getElementById('save').onclick = function() {" +
+    "  var settings = {" +
+    "    openweather_key: document.getElementById('owkey').value," +
+    "    units: document.getElementById('units').value," +
+    "    anthropic_key: document.getElementById('aikey').value" +
+    "  };" +
+    "  document.location = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(settings));" +
+    "};" +
+    "</script></body></html>";
+
+  return "data:text/html;charset=utf-8," + encodeURIComponent(html);
+}
+
 Pebble.addEventListener("ready", function() {
   console.log("PebbleKit JS ready");
   getWeather();
@@ -159,5 +201,33 @@ Pebble.addEventListener("appmessage", function(e) {
     var hour = e.payload[KEY_HOUR] !== undefined ? e.payload[KEY_HOUR] : new Date().getHours();
     requestAiGreeting(steps, hour);
   }
+});
+
+Pebble.addEventListener("showConfiguration", function() {
+  Pebble.openURL(buildConfigPageUrl());
+});
+
+Pebble.addEventListener("webviewclosed", function(e) {
+  if (!e.response) {
+    return; // user backed out without saving
+  }
+  var settings;
+  try {
+    settings = JSON.parse(decodeURIComponent(e.response));
+  } catch (err) {
+    console.log("Could not parse config response: " + err);
+    return;
+  }
+
+  localStorage.setItem("openweather_key", settings.openweather_key || "");
+  localStorage.setItem("units", settings.units || "metric");
+  localStorage.setItem("anthropic_key", settings.anthropic_key || "");
+
+  API_KEY = settings.openweather_key || "";
+  UNITS = settings.units || "metric";
+  ANTHROPIC_API_KEY = settings.anthropic_key || "";
+
+  console.log("Settings saved from config page");
+  getWeather();
 });
 

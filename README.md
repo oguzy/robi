@@ -1,4 +1,4 @@
-# Pip-Bot — Pebble Time 2 watchface
+# Robi — Pebble Time 2 watchface
 
 A robot-pet watchface for Pebble Time 2 (and Time/Time Steel/Round), inspired
 by "Pip", but with a boxy little robot head instead of just eyes, plus:
@@ -12,8 +12,9 @@ by "Pip", but with a boxy little robot head instead of just eyes, plus:
 ## 1. Add your weather API key
 
 1. Get a free key at https://openweathermap.org/api
-2. Open `src/pkjs/index.js`
-3. Replace `PASTE_YOUR_OPENWEATHERMAP_KEY_HERE` with your key
+2. Install the watchface, then open it in the Pebble phone app and tap
+   **Settings** — this opens Robi's config page, where you can paste the
+   key (and pick Celsius/Fahrenheit) without touching any code.
 
 Until you do this, the watchface still works fine — it just shows `--°`
 for weather.
@@ -99,11 +100,11 @@ double-click on the screen since a browser has no equivalent gesture.
    memory. Each request is a fresh, one-off call with only the context this
    code sends it (time, weather, steps) — the robot doesn't "remember" you
    between taps.
-2. Open `src/pkjs/index.js` and paste your key in place of
-   `PASTE_YOUR_ANTHROPIC_API_KEY_HERE`.
+2. Open the watchface's **Settings** page from the Pebble phone app (same
+   place as the weather key) and paste it into the Anthropic API key field.
 3. That's it — double-tapping now asks for a short greeting instead of
-   using the built-in one. Leave the placeholder in place to skip this
-   entirely; nothing else changes.
+   using the built-in one. Leave the field blank to skip this entirely;
+   nothing else changes.
 
 **How it works:** the watch sends your current step count and the hour to
 the phone over Bluetooth (weather it already knows from its own periodic
@@ -118,11 +119,11 @@ breaks.
 on the model used (`claude-haiku-4-5-20251001`). Even frequent double-taps
 all day would run pennies a month, not dollars.
 
-**Security note:** the key sits in plaintext in `index.js`, the same way
-the OpenWeatherMap key does. That's fine for your own personal build, but
-don't publish this project publicly (GitHub, app stores, etc.) with a real
-key baked in — anyone who gets the file gets the key and can spend your
-API credits.
+**Security note:** both keys are entered through the phone app's Settings
+page and stored in the watchface's local storage on your phone — they are
+never baked into the source or the compiled `.pbw`, so it's safe to publish
+this project's code publicly. Only the key you personally enter on your own
+phone can spend your API credits.
 
 ## Character design
 
@@ -169,7 +170,7 @@ e-paper (no real gradients or blur available):
   paths for every body part, which isn't worth the CPU/battery cost on
   e-paper for a cosmetic flourish.
 
-A note on expectations: the browser preview (`pip-bot-preview.html`) runs at
+A note on expectations: the browser preview (`robi-preview.html`) runs at
 a full 60fps with gradients, shadows, and particle physics because a browser
 has no meaningful power budget. The real watch redraws only while something
 is actually animating, at a modest ~10 frames/sec, using flat colors and
