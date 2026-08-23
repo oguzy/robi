@@ -61,6 +61,7 @@ static bool s_goal_celebrated_today = false;
 static AppTimer *s_anim_timer = NULL;
 
 static int16_t s_last_z_avg = 0;
+static bool s_accel_streaming = false;
 
 static time_t s_last_tap_sec = 0;
 static uint16_t s_last_tap_ms = 0;
@@ -107,6 +108,23 @@ static void evaluate_state(void) {
   }
 
   HealthActivityMask activities = health_service_peek_current_activities();
+
+  // Raw accelerometer streaming (needed only for the stairs-direction
+  // heuristic below) is subscribed just-in-time and dropped the rest of the
+  // time. Keeping it running continuously fights the accelerometer's
+  // low-power tap-interrupt mode, which is what both the watch's own
+  // tap-to-wake gesture and our double-tap greeting rely on - with it
+  // subscribed all the time, taps stopped registering once the screen went
+  // to sleep.
+  bool want_accel_streaming = (activities & HealthActivityWalk) != 0;
+  if (want_accel_streaming != s_accel_streaming) {
+    if (want_accel_streaming) {
+      accel_data_service_subscribe(0, NULL);
+    } else {
+      accel_data_service_unsubscribe();
+    }
+    s_accel_streaming = want_accel_streaming;
+  }
 
   if (activities & HealthActivityRun) { s_state = ROBOT_RUNNING; return; }
 
@@ -812,7 +830,6 @@ static void init(void) {
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
   health_service_events_subscribe(health_handler, NULL);
   accel_tap_service_subscribe(tap_handler);
-  accel_data_service_subscribe(0, NULL);
 
   app_message_register_inbox_received(inbox_received_handler);
   app_message_register_inbox_dropped(inbox_dropped_callback);
@@ -825,7 +842,7 @@ static void deinit(void) {
   tick_timer_service_unsubscribe();
   health_service_events_unsubscribe();
   accel_tap_service_unsubscribe();
-  accel_data_service_unsubscribe();
+  if (s_accel_streaming) accel_data_service_unsubscribe();
   window_destroy(s_window);
 }
 
