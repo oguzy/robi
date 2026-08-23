@@ -73,18 +73,9 @@ The robot now reacts to what you're doing, in priority order:
 ## Double-tap to greet you
 
 Quickly tap the watch twice (physically knock it, the way you'd already
-tap it once to wake the robot) and it reacts. With an Anthropic API key
-configured (see below), it asks Claude for a short, situational one-liner
-based on the time of day, current weather, and your steps so far — a
-different line each time instead of a fixed script. Without a key, or if
-the request doesn't come back in time, it falls back to one of two
-built-in reactions chosen at random:
-
-- **Says "Hi!"** — a speech bubble pops up and it raises an arm in a wave.
-- **Just smiles** — no bubble, its mouth curves into a big smile and its
-  eyes brighten for a moment, then it settles back down.
-
-Either way it settles back down after 1.8–2.8 seconds.
+tap it once to wake the robot) and it reacts: a speech bubble pops up with
+a random greeting — "Hi!", "Hello!", or "Hoi!" — and it raises an arm in a
+wave, then settles back down after about 1.8 seconds.
 
 **Important:** Pebble watches don't have a touchscreen — Pebble Time 2 is
 buttons + accelerometer. "Double tap" here means physically tapping/
@@ -92,38 +83,10 @@ knocking the watch case twice quickly, the same gesture the original Pip
 uses for its single-tap reactions. The HTML preview simulates this with a
 double-click on the screen since a browser has no equivalent gesture.
 
-## Optional: AI-generated greetings (Anthropic API)
-
-1. Get a developer API key at https://console.anthropic.com — **this is
-   separate from a claude.ai account.** It's not "signing in with Claude,"
-   it's a billed developer API key with no access to any chat history or
-   memory. Each request is a fresh, one-off call with only the context this
-   code sends it (time, weather, steps) — the robot doesn't "remember" you
-   between taps.
-2. Open the watchface's **Settings** page from the Pebble phone app (same
-   place as the weather key) and paste it into the Anthropic API key field.
-3. That's it — double-tapping now asks for a short greeting instead of
-   using the built-in one. Leave the field blank to skip this entirely;
-   nothing else changes.
-
-**How it works:** the watch sends your current step count and the hour to
-the phone over Bluetooth (weather it already knows from its own periodic
-fetch). The phone calls the Anthropic API with a short prompt built from
-that context and asks for one line under 30 characters, then relays it
-back to the watch to show in the speech bubble. If nothing comes back
-within 4 seconds — no signal, no key, API hiccup — the watch just falls
-back to its normal "Hi!"/smile reaction on its own; nothing hangs or
-breaks.
-
-**Cost:** a prompt and reply this short costs a small fraction of a cent
-on the model used (`claude-haiku-4-5-20251001`). Even frequent double-taps
-all day would run pennies a month, not dollars.
-
-**Security note:** both keys are entered through the phone app's Settings
-page and stored in the watchface's local storage on your phone — they are
-never baked into the source or the compiled `.pbw`, so it's safe to publish
-this project's code publicly. Only the key you personally enter on your own
-phone can spend your API credits.
+**Security note:** the weather key is entered through the phone app's
+Settings page and stored in the watchface's local storage on your phone —
+it is never baked into the source or the compiled `.pbw`, so it's safe to
+publish this project's code publicly.
 
 ## Character design
 

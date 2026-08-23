@@ -12,18 +12,12 @@
 #define TEXT_COLOR GColorWhite
 #define DOUBLE_TAP_WINDOW_MS 400
 #define SPEECH_DURATION_MS 1800
-#define AI_SPEECH_DURATION_MS 2800
-#define AI_TIMEOUT_MS 4000
 
 enum {
   KEY_TEMPERATURE = 0,
   KEY_CONDITIONS = 1,
   KEY_WEATHER_ICON = 2,
-  KEY_REQUEST_WEATHER = 3,
-  KEY_REQUEST_GREETING = 4,
-  KEY_AI_TEXT = 5,
-  KEY_STEPS = 6,
-  KEY_HOUR = 7
+  KEY_REQUEST_WEATHER = 3
 };
 
 typedef enum {
@@ -49,6 +43,7 @@ static TextLayer *s_weather_layer;
 
 static GFont s_time_font;
 static GFont s_small_font;
+static GFont s_day_font;
 static GFont s_speech_font;
 
 static char s_time_buffer[8];
@@ -73,10 +68,7 @@ static uint16_t s_last_tap_ms = 0;
 static bool s_show_speech = false;
 static bool s_show_smile = false;
 static const char *s_speech_text = "Hi!";
-static char s_ai_text_buffer[48];
-static bool s_waiting_for_ai = false;
 static AppTimer *s_speech_timer = NULL;
-static AppTimer *s_ai_timeout_timer = NULL;
 
 // ---------------- HELPERS ----------------
 static bool is_night(void) {
@@ -216,91 +208,91 @@ static void draw_stairs_scroll_background(GContext *ctx, GRect bounds, bool goin
 // rounded-rect shapes.
 static void draw_sleeping_scene(GContext *ctx, GRect bounds) {
   int cx = bounds.origin.x + bounds.size.w / 2;
-  int bed_w = 128, bed_h = 30;
+  int bed_w = 79, bed_h = 19;
   int bed_x = cx - bed_w / 2;
-  int bed_y = bounds.origin.y + bounds.size.h - bed_h - 14;
+  int bed_y = bounds.origin.y + bounds.size.h - bed_h - 9;
 
   // headboard (taller panel behind the pillow end) - shaded like the
   // standing robot's body parts, no full accent outline
-  GRect headboard = GRect(bed_x - 6, bed_y - 16, 14, bed_h + 28);
+  GRect headboard = GRect(bed_x - 4, bed_y - 10, 9, bed_h + 17);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, headboard, 6, GCornersAll);
-  GRect headboard_hi = GRect(headboard.origin.x + 1, headboard.origin.y + 1, headboard.size.w - 2, 10);
+  graphics_fill_rect(ctx, headboard, 4, GCornersAll);
+  GRect headboard_hi = GRect(headboard.origin.x + 1, headboard.origin.y + 1, headboard.size.w - 1, 6);
   graphics_context_set_fill_color(ctx, BODY_LIGHT);
-  graphics_fill_rect(ctx, headboard_hi, 5, GCornersTop);
+  graphics_fill_rect(ctx, headboard_hi, 3, GCornersTop);
 
   // frame
-  GRect frame = GRect(bed_x - 2, bed_y - 2, bed_w + 4, bed_h + 10);
+  GRect frame = GRect(bed_x - 1, bed_y - 1, bed_w + 2, bed_h + 6);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, frame, 6, GCornersAll);
+  graphics_fill_rect(ctx, frame, 4, GCornersAll);
 
   // legs
   graphics_context_set_fill_color(ctx, BODY_MID);
-  graphics_fill_rect(ctx, GRect(bed_x + 2, bed_y + bed_h + 8, 5, 8), 0, GCornersAll);
-  graphics_fill_rect(ctx, GRect(bed_x + bed_w - 7, bed_y + bed_h + 8, 5, 8), 0, GCornersAll);
+  graphics_fill_rect(ctx, GRect(bed_x + 1, bed_y + bed_h + 5, 3, 5), 0, GCornersAll);
+  graphics_fill_rect(ctx, GRect(bed_x + bed_w - 4, bed_y + bed_h + 5, 3, 5), 0, GCornersAll);
 
   // mattress with a couple of stitch lines for texture
   GRect mattress = GRect(bed_x, bed_y, bed_w, bed_h);
   graphics_context_set_fill_color(ctx, GColorLightGray);
-  graphics_fill_rect(ctx, mattress, 5, GCornersAll);
+  graphics_fill_rect(ctx, mattress, 3, GCornersAll);
   graphics_context_set_stroke_color(ctx, GColorFromHEX(0xB5B7BA));
   graphics_context_set_stroke_width(ctx, 1);
-  graphics_draw_line(ctx, GPoint(bed_x + 4, bed_y + bed_h / 3), GPoint(bed_x + bed_w - 4, bed_y + bed_h / 3));
-  graphics_draw_line(ctx, GPoint(bed_x + 4, bed_y + bed_h * 2 / 3), GPoint(bed_x + bed_w - 4, bed_y + bed_h * 2 / 3));
+  graphics_draw_line(ctx, GPoint(bed_x + 2, bed_y + bed_h / 3), GPoint(bed_x + bed_w - 2, bed_y + bed_h / 3));
+  graphics_draw_line(ctx, GPoint(bed_x + 2, bed_y + bed_h * 2 / 3), GPoint(bed_x + bed_w - 2, bed_y + bed_h * 2 / 3));
 
   // pillow
-  GRect pillow = GRect(bed_x + 4, bed_y - 8, 32, 17);
+  GRect pillow = GRect(bed_x + 2, bed_y - 5, 20, 11);
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, pillow, 7, GCornersAll);
+  graphics_fill_rect(ctx, pillow, 4, GCornersAll);
 
   // robot lying down: same shaded-panel body language as the standing robot
-  int body_y = bed_y - 4;
-  GRect body = GRect(bed_x + 32, body_y, 68, 19);
+  int body_y = bed_y - 2;
+  GRect body = GRect(bed_x + 20, body_y, 42, 12);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, body, 10, GCornersAll);
-  GRect body_hi = GRect(body.origin.x + 2, body.origin.y + 2, body.size.w - 4, 7);
+  graphics_fill_rect(ctx, body, 6, GCornersAll);
+  GRect body_hi = GRect(body.origin.x + 1, body.origin.y + 1, body.size.w - 2, 4);
   graphics_context_set_fill_color(ctx, BODY_LIGHT);
-  graphics_fill_rect(ctx, body_hi, 8, GCornersTop);
+  graphics_fill_rect(ctx, body_hi, 5, GCornersTop);
   // dim chest light (not the bright pulse used while awake)
   graphics_context_set_fill_color(ctx, ACCENT_DIM);
-  graphics_fill_circle(ctx, GPoint(body.origin.x + 18, body.origin.y + 9), 3);
+  graphics_fill_circle(ctx, GPoint(body.origin.x + 11, body.origin.y + 6), 2);
 
-  GRect head = GRect(bed_x + 8, body_y - 9, 28, 25);
+  GRect head = GRect(bed_x + 5, body_y - 6, 17, 16);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, head, 10, GCornersAll);
-  GRect head_hi = GRect(head.origin.x + 2, head.origin.y + 2, head.size.w - 4, 9);
+  graphics_fill_rect(ctx, head, 6, GCornersAll);
+  GRect head_hi = GRect(head.origin.x + 1, head.origin.y + 1, head.size.w - 2, 6);
   graphics_context_set_fill_color(ctx, BODY_LIGHT);
-  graphics_fill_rect(ctx, head_hi, 8, GCornersTop);
+  graphics_fill_rect(ctx, head_hi, 5, GCornersTop);
 
   // mini visor with closed-eye slits, same idea as the standing robot's
   // visor rather than lines floating directly on the body panel
-  GRect visor = GRect(head.origin.x + 4, head.origin.y + 12, 20, 9);
+  GRect visor = GRect(head.origin.x + 2, head.origin.y + 7, 12, 6);
   graphics_context_set_fill_color(ctx, VISOR_COLOR);
-  graphics_fill_rect(ctx, visor, 4, GCornersAll);
-  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
-  graphics_context_set_stroke_width(ctx, 2);
-  graphics_draw_line(ctx, GPoint(visor.origin.x + 3, visor.origin.y + 4),
-                           GPoint(visor.origin.x + 8, visor.origin.y + 4));
-  graphics_draw_line(ctx, GPoint(visor.origin.x + 12, visor.origin.y + 4),
-                           GPoint(visor.origin.x + 17, visor.origin.y + 4));
-
-  // blanket with a fold line for a little dimension
-  GRect blanket = GRect(bed_x + 28, bed_y + bed_h - 9, bed_w - 32, 9);
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
-  graphics_fill_rect(ctx, blanket, 4, GCornersAll);
+  graphics_fill_rect(ctx, visor, 2, GCornersAll);
   graphics_context_set_stroke_color(ctx, ACCENT_DIM);
   graphics_context_set_stroke_width(ctx, 1);
-  graphics_draw_line(ctx, GPoint(blanket.origin.x + 6, blanket.origin.y + blanket.size.h - 3),
-                           GPoint(blanket.origin.x + blanket.size.w - 6, blanket.origin.y + blanket.size.h - 3));
+  graphics_draw_line(ctx, GPoint(visor.origin.x + 2, visor.origin.y + 2),
+                           GPoint(visor.origin.x + 5, visor.origin.y + 2));
+  graphics_draw_line(ctx, GPoint(visor.origin.x + 7, visor.origin.y + 2),
+                           GPoint(visor.origin.x + 11, visor.origin.y + 2));
+
+  // blanket with a fold line for a little dimension
+  GRect blanket = GRect(bed_x + 17, bed_y + bed_h - 6, bed_w - 20, 6);
+  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_fill_rect(ctx, blanket, 2, GCornersAll);
+  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_line(ctx, GPoint(blanket.origin.x + 4, blanket.origin.y + blanket.size.h - 2),
+                           GPoint(blanket.origin.x + blanket.size.w - 4, blanket.origin.y + blanket.size.h - 2));
 
   // floating "z"s
   graphics_context_set_text_color(ctx, GColorLightGray);
   int bob = (s_anim_phase % 20) - 10;
   char z1[] = "z";
   char z2[] = "Z";
-  graphics_draw_text(ctx, z1, s_speech_font, GRect(head.origin.x + 18, head.origin.y - 20 - bob / 2, 20, 20),
+  graphics_draw_text(ctx, z1, s_speech_font, GRect(head.origin.x + 11, head.origin.y - 12 - bob / 2, 12, 12),
                       GTextOverflowModeFill, GTextAlignmentLeft, NULL);
-  graphics_draw_text(ctx, z2, s_speech_font, GRect(head.origin.x + 28, head.origin.y - 32 - bob, 20, 20),
+  graphics_draw_text(ctx, z2, s_speech_font, GRect(head.origin.x + 17, head.origin.y - 20 - bob, 12, 12),
                       GTextOverflowModeFill, GTextAlignmentLeft, NULL);
 }
 
@@ -340,26 +332,26 @@ static void draw_sun(GContext *ctx, GRect head) {
 }
 
 static void draw_speech_bubble(GContext *ctx, GRect head, GRect bounds, const char *text) {
-  int bubble_w = 108, bubble_h = 36;
-  int bubble_x = head.origin.x + head.size.w - 24;
+  int bubble_w = 64, bubble_h = 26;
+  int bubble_x = head.origin.x + head.size.w - 15;
   if (bubble_x + bubble_w > bounds.origin.x + bounds.size.w - 4) {
     bubble_x = bounds.origin.x + bounds.size.w - 4 - bubble_w;
   }
   if (bubble_x < bounds.origin.x + 4) bubble_x = bounds.origin.x + 4;
 
-  GRect bubble = GRect(bubble_x, head.origin.y - bubble_h - 8, bubble_w, bubble_h);
+  GRect bubble = GRect(bubble_x, head.origin.y - 4, bubble_w, bubble_h);
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, bubble, 8, GCornersAll);
+  graphics_fill_rect(ctx, bubble, 5, GCornersAll);
   graphics_context_set_stroke_color(ctx, GColorDarkGray);
-  graphics_draw_round_rect(ctx, bubble, 8);
+  graphics_draw_round_rect(ctx, bubble, 5);
 
-  int tail_x = head.origin.x + head.size.w / 2;
-  if (tail_x < bubble.origin.x + 8) tail_x = bubble.origin.x + 8;
-  if (tail_x > bubble.origin.x + bubble_w - 8) tail_x = bubble.origin.x + bubble_w - 8;
+  int tail_y = bubble.origin.y + bubble.size.h / 2;
+  if (tail_y < bubble.origin.y + 6) tail_y = bubble.origin.y + 6;
+  if (tail_y > bubble.origin.y + bubble.size.h - 6) tail_y = bubble.origin.y + bubble.size.h - 6;
   GPoint tail[3] = {
-    GPoint(tail_x, bubble.origin.y + bubble.size.h - 2),
-    GPoint(tail_x + 10, bubble.origin.y + bubble.size.h - 2),
-    GPoint(head.origin.x + head.size.w / 2, bubble.origin.y + bubble.size.h + 10)
+    GPoint(bubble.origin.x, tail_y - 4),
+    GPoint(bubble.origin.x, tail_y + 4),
+    GPoint(head.origin.x + head.size.w - 2, head.origin.y + head.size.h / 2)
   };
   GPathInfo tail_info = { .num_points = 3, .points = tail };
   GPath *tail_path = gpath_create(&tail_info);
@@ -368,7 +360,7 @@ static void draw_speech_bubble(GContext *ctx, GRect head, GRect bounds, const ch
   gpath_destroy(tail_path);
 
   graphics_context_set_text_color(ctx, GColorBlack);
-  graphics_draw_text(ctx, text, s_speech_font, grect_inset(bubble, GEdgeInsets(4)),
+  graphics_draw_text(ctx, text, s_speech_font, grect_inset(bubble, GEdgeInsets(3)),
                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
@@ -377,18 +369,18 @@ static void draw_speech_bubble(GContext *ctx, GRect head, GRect bounds, const ch
 // idea as the head/torso panels, just narrower.
 static void draw_limb(GContext *ctx, GRect r) {
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, r, 4, GCornersAll);
+  graphics_fill_rect(ctx, r, 2, GCornersAll);
   GRect hi = GRect(r.origin.x + 1, r.origin.y + 1, (r.size.w - 2) / 2, r.size.h - 2);
   graphics_context_set_fill_color(ctx, BODY_MID);
-  graphics_fill_rect(ctx, hi, 3, GCornersLeft);
+  graphics_fill_rect(ctx, hi, 2, GCornersLeft);
 
-  GRect cuff = GRect(r.origin.x, r.origin.y + r.size.h - 8, r.size.w, 2);
+  GRect cuff = GRect(r.origin.x, r.origin.y + r.size.h - 5, r.size.w, 1);
   graphics_context_set_fill_color(ctx, ACCENT_DIM);
   graphics_fill_rect(ctx, cuff, 1, GCornersAll);
 
-  GRect cap = GRect(r.origin.x - 1, r.origin.y + r.size.h - 4, r.size.w + 2, 6);
+  GRect cap = GRect(r.origin.x - 1, r.origin.y + r.size.h - 2, r.size.w + 2, 4);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, cap, 3, GCornersAll);
+  graphics_fill_rect(ctx, cap, 2, GCornersAll);
 }
 
 // ---------------- MAIN ROBOT DRAWING ----------------
@@ -408,7 +400,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   switch (s_state) {
     case ROBOT_WALKING: {
       draw_road(ctx, bounds, 2);
-      int swing = sine_wave(6, TRIG_MAX_ANGLE / 11);
+      int swing = sine_wave(4, TRIG_MAX_ANGLE / 11);
       bob = -(abs(swing) / 2);
       arm_swing = swing;
       leg_swing = swing / 2;
@@ -416,8 +408,8 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     }
     case ROBOT_RUNNING: {
       draw_road(ctx, bounds, 5);
-      int swing = sine_wave(10, TRIG_MAX_ANGLE / 6);
-      bob = -(abs(swing) / 2) - 2;
+      int swing = sine_wave(6, TRIG_MAX_ANGLE / 6);
+      bob = -(abs(swing) / 2) - 1;
       tilt = swing / 5;
       arm_swing = swing;
       leg_swing = swing * 2 / 3;
@@ -425,139 +417,139 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     }
     case ROBOT_STAIRS_UP: {
       draw_stairs_scroll_background(ctx, bounds, true);
-      tilt = 5;
-      top_shift = -(abs(sine_wave(3, TRIG_MAX_ANGLE / 10)));
-      leg_swing = sine_wave(5, TRIG_MAX_ANGLE / 10);
-      arm_swing = sine_wave(3, TRIG_MAX_ANGLE / 10);
+      tilt = 3;
+      top_shift = -(abs(sine_wave(2, TRIG_MAX_ANGLE / 10)));
+      leg_swing = sine_wave(3, TRIG_MAX_ANGLE / 10);
+      arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 10);
       break;
     }
     case ROBOT_STAIRS_DOWN: {
       draw_stairs_scroll_background(ctx, bounds, false);
-      tilt = -5;
-      top_shift = -(abs(sine_wave(3, TRIG_MAX_ANGLE / 10)));
-      leg_swing = sine_wave(5, TRIG_MAX_ANGLE / 10);
-      arm_swing = sine_wave(3, TRIG_MAX_ANGLE / 10);
+      tilt = -3;
+      top_shift = -(abs(sine_wave(2, TRIG_MAX_ANGLE / 10)));
+      leg_swing = sine_wave(3, TRIG_MAX_ANGLE / 10);
+      arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 10);
       break;
     }
     case ROBOT_GOAL_REACHED:
-      bob = -(int)(abs(sine_wave(8, TRIG_MAX_ANGLE / 8)));
-      arm_swing = -10;
+      bob = -(int)(abs(sine_wave(5, TRIG_MAX_ANGLE / 8)));
+      arm_swing = -6;
       break;
     case ROBOT_WEATHER_COLD:
-      tilt = sine_wave(2, TRIG_MAX_ANGLE / 6);
+      tilt = sine_wave(1, TRIG_MAX_ANGLE / 6);
       break;
     default:
       break;
   }
 
-  if (s_show_speech) arm_swing = -10;
-  if (s_bounce) top_shift -= 4;
+  if (s_show_speech) arm_swing = -6;
+  if (s_bounce) top_shift -= 2;
   int top = bounds.origin.y + top_shift;
 
   // ---- antenna ----
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_circle(ctx, GPoint(cx + tilt, top + 9 + bob), 4);
+  graphics_fill_circle(ctx, GPoint(cx + tilt, top + 6 + bob), 2);
   graphics_context_set_stroke_color(ctx, ACCENT_COLOR);
-  graphics_context_set_stroke_width(ctx, 2);
-  graphics_draw_line(ctx, GPoint(cx + tilt, top + 1), GPoint(cx + tilt, top + 9 + bob));
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_line(ctx, GPoint(cx + tilt, top + 1), GPoint(cx + tilt, top + 6 + bob));
   graphics_context_set_fill_color(ctx, ACCENT_COLOR);
-  graphics_fill_circle(ctx, GPoint(cx + tilt, top + bob), 3);
+  graphics_fill_circle(ctx, GPoint(cx + tilt, top + bob), 2);
 
   // ---- head: shaded panel instead of a flat block with a uniform outline ----
-  int head_w = 64, head_h = 46;
-  GRect head = GRect(cx - head_w / 2 + tilt, top + 10 + bob, head_w, head_h);
+  int head_w = 40, head_h = 29;
+  GRect head = GRect(cx - head_w / 2 + tilt, top + 6 + bob, head_w, head_h);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, head, 15, GCornersAll);
-  GRect head_hi = GRect(head.origin.x + 2, head.origin.y + 2, head_w - 4, head_h * 3 / 5);
+  graphics_fill_rect(ctx, head, 9, GCornersAll);
+  GRect head_hi = GRect(head.origin.x + 1, head.origin.y + 1, head_w - 2, head_h * 3 / 5);
   graphics_context_set_fill_color(ctx, BODY_LIGHT);
-  graphics_fill_rect(ctx, head_hi, 12, GCornersTop);
+  graphics_fill_rect(ctx, head_hi, 7, GCornersTop);
   // small shine
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_circle(ctx, GPoint(head.origin.x + 14, head.origin.y + 8), 3);
+  graphics_fill_circle(ctx, GPoint(head.origin.x + 9, head.origin.y + 5), 2);
 
   // ---- visor housing the eyes ----
-  GRect visor = GRect(head.origin.x + 6, head.origin.y + 15, head_w - 12, 20);
+  GRect visor = GRect(head.origin.x + 4, head.origin.y + 9, head_w - 7, 12);
   graphics_context_set_fill_color(ctx, VISOR_COLOR);
-  graphics_fill_rect(ctx, visor, 9, GCornersAll);
+  graphics_fill_rect(ctx, visor, 6, GCornersAll);
 
   // ---- eyes ----
-  int eye_w = 14, eye_h_open = 16, eye_h = eye_h_open;
-  if (s_blink) eye_h = 3;
-  else if (s_state == ROBOT_WEATHER_SUN) eye_h = 6;
-  else if (s_state == ROBOT_GOAL_REACHED || s_show_speech || s_show_smile) eye_h = 18;
-  else if (s_state == ROBOT_WEATHER_RAIN) eye_h = 10;
+  int eye_w = 9, eye_h_open = 10, eye_h = eye_h_open;
+  if (s_blink) eye_h = 2;
+  else if (s_state == ROBOT_WEATHER_SUN) eye_h = 4;
+  else if (s_state == ROBOT_GOAL_REACHED || s_show_speech || s_show_smile) eye_h = 11;
+  else if (s_state == ROBOT_WEATHER_RAIN) eye_h = 6;
 
   int eye_y = visor.origin.y + (visor.size.h - eye_h) / 2;
-  int eye_gap = 9;
+  int eye_gap = 6;
   GRect left_eye = GRect(cx - eye_gap / 2 - eye_w + tilt, eye_y, eye_w, eye_h);
   GRect right_eye = GRect(cx + eye_gap / 2 + tilt, eye_y, eye_w, eye_h);
 
   graphics_context_set_fill_color(ctx, ACCENT_COLOR);
-  graphics_fill_rect(ctx, left_eye, 4, GCornersAll);
-  graphics_fill_rect(ctx, right_eye, 4, GCornersAll);
+  graphics_fill_rect(ctx, left_eye, 2, GCornersAll);
+  graphics_fill_rect(ctx, right_eye, 2, GCornersAll);
 
   // ---- mouth: a curved smile arc for the smile reaction, otherwise the
   // usual flat line (wider when talking or celebrating) ----
   if (!s_blink && s_show_smile) {
-    GRect smile_rect = GRect(cx - 10 + tilt, head.origin.y + head_h - 20, 20, 16);
+    GRect smile_rect = GRect(cx - 6 + tilt, head.origin.y + head_h - 12, 12, 10);
     graphics_context_set_stroke_color(ctx, ACCENT_DIM);
-    graphics_context_set_stroke_width(ctx, 2);
+    graphics_context_set_stroke_width(ctx, 1);
     graphics_draw_arc(ctx, smile_rect, GOvalScaleModeFitCircle,
                        DEG_TO_TRIGANGLE(120), DEG_TO_TRIGANGLE(240));
   } else if (!s_blink) {
-    int mouth_w = (s_state == ROBOT_GOAL_REACHED || s_show_speech) ? 22 : 14;
-    GRect mouth = GRect(cx - mouth_w / 2 + tilt, head.origin.y + head_h - 9, mouth_w, 2);
+    int mouth_w = (s_state == ROBOT_GOAL_REACHED || s_show_speech) ? 14 : 9;
+    GRect mouth = GRect(cx - mouth_w / 2 + tilt, head.origin.y + head_h - 6, mouth_w, 1);
     graphics_context_set_fill_color(ctx, ACCENT_DIM);
     graphics_fill_rect(ctx, mouth, 1, GCornersAll);
   }
 
   // ---- torso: same shaded-panel treatment as the head ----
-  int torso_w = 50, torso_h = 34;
-  GRect torso = GRect(cx - torso_w / 2 + tilt, head.origin.y + head_h - 2, torso_w, torso_h);
+  int torso_w = 31, torso_h = 21;
+  GRect torso = GRect(cx - torso_w / 2 + tilt, head.origin.y + head_h - 1, torso_w, torso_h);
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, torso, 13, GCornersAll);
-  GRect torso_hi = GRect(torso.origin.x + 2, torso.origin.y + 2, torso_w - 4, torso_h * 3 / 5);
+  graphics_fill_rect(ctx, torso, 8, GCornersAll);
+  GRect torso_hi = GRect(torso.origin.x + 1, torso.origin.y + 1, torso_w - 2, torso_h * 3 / 5);
   graphics_context_set_fill_color(ctx, BODY_LIGHT);
-  graphics_fill_rect(ctx, torso_hi, 10, GCornersTop);
+  graphics_fill_rect(ctx, torso_hi, 6, GCornersTop);
 
   // chest panel + light (dim halo behind a bright core, no true blur on
   // e-paper so this is faked with two flat circles)
-  GRect chest_panel = GRect(torso.origin.x + torso_w / 2 - 16, torso.origin.y + 5, 32, 12);
+  GRect chest_panel = GRect(torso.origin.x + torso_w / 2 - 10, torso.origin.y + 3, 20, 7);
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, chest_panel, 6, GCornersAll);
+  graphics_fill_rect(ctx, chest_panel, 4, GCornersAll);
   graphics_context_set_fill_color(ctx, ACCENT_DIM);
-  graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 13), 6);
+  graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 8), 4);
   graphics_context_set_fill_color(ctx, ACCENT_COLOR);
-  graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 13), 3);
+  graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 8), 2);
 
   // vent marks
   graphics_context_set_fill_color(ctx, BODY_DARK);
-  graphics_fill_rect(ctx, GRect(torso.origin.x + 10, torso.origin.y + torso_h - 8, 7, 2), 1, GCornersAll);
-  graphics_fill_rect(ctx, GRect(torso.origin.x + torso_w - 17, torso.origin.y + torso_h - 8, 7, 2), 1, GCornersAll);
+  graphics_fill_rect(ctx, GRect(torso.origin.x + 6, torso.origin.y + torso_h - 5, 4, 1), 1, GCornersAll);
+  graphics_fill_rect(ctx, GRect(torso.origin.x + torso_w - 11, torso.origin.y + torso_h - 5, 4, 1), 1, GCornersAll);
 
   // ---- arms ----
-  int arm_w = 10, arm_h = 26;
-  GRect left_arm = GRect(torso.origin.x - arm_w - 2, torso.origin.y + 3 + arm_swing, arm_w, arm_h);
-  GRect right_arm = GRect(torso.origin.x + torso_w + 2, torso.origin.y + 3 - arm_swing, arm_w, arm_h);
+  int arm_w = 6, arm_h = 16;
+  GRect left_arm = GRect(torso.origin.x - arm_w - 1, torso.origin.y + 2 + arm_swing, arm_w, arm_h);
+  GRect right_arm = GRect(torso.origin.x + torso_w + 1, torso.origin.y + 2 - arm_swing, arm_w, arm_h);
   draw_limb(ctx, left_arm);
   draw_limb(ctx, right_arm);
   // shoulder joint balls sit at the torso attachment point, not the limb
   // itself, so they read as a fixed pivot even while the arm swings
   graphics_context_set_fill_color(ctx, BODY_MID);
-  graphics_fill_circle(ctx, GPoint(torso.origin.x - 2, torso.origin.y + 5), 5);
-  graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w + 2, torso.origin.y + 5), 5);
+  graphics_fill_circle(ctx, GPoint(torso.origin.x - 1, torso.origin.y + 3), 3);
+  graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w + 1, torso.origin.y + 3), 3);
 
   // ---- legs ----
-  int leg_w = 12, leg_h = 24, leg_gap = 6;
+  int leg_w = 7, leg_h = 15, leg_gap = 4;
   GRect left_leg = GRect(cx - leg_gap / 2 - leg_w + tilt + leg_swing,
-                          torso.origin.y + torso_h - 2, leg_w, leg_h);
+                          torso.origin.y + torso_h - 1, leg_w, leg_h);
   GRect right_leg = GRect(cx + leg_gap / 2 + tilt - leg_swing,
-                           torso.origin.y + torso_h - 2, leg_w, leg_h);
+                           torso.origin.y + torso_h - 1, leg_w, leg_h);
   draw_limb(ctx, left_leg);
   draw_limb(ctx, right_leg);
   graphics_context_set_fill_color(ctx, BODY_MID);
-  graphics_fill_circle(ctx, GPoint(cx - leg_gap / 2 - leg_w / 2 + tilt, torso.origin.y + torso_h + 2), 5);
-  graphics_fill_circle(ctx, GPoint(cx + leg_gap / 2 + leg_w / 2 + tilt, torso.origin.y + torso_h + 2), 5);
+  graphics_fill_circle(ctx, GPoint(cx - leg_gap / 2 - leg_w / 2 + tilt, torso.origin.y + torso_h + 1), 3);
+  graphics_fill_circle(ctx, GPoint(cx + leg_gap / 2 + leg_w / 2 + tilt, torso.origin.y + torso_h + 1), 3);
 
   // ---- state decorations ----
   if (s_state == ROBOT_GOAL_REACHED) draw_confetti(ctx, head);
@@ -656,57 +648,19 @@ static void speech_hide_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
-// Double-tap reaction: 50/50 between saying "Hi!" with a wave, or just
-// flashing a big smile with no bubble. This is also the fallback used if
-// an AI greeting was requested but nothing came back in time.
-static void trigger_speech(void) {
-  bool say_hi = (rand() % 2 == 0);
+// Double-tap reaction: pick a random greeting word and show it in a speech
+// bubble alongside a wave.
+static const char *const s_greetings[] = { "Hi!", "Hello!", "Hoi!" };
 
-  s_show_speech = say_hi;
-  s_show_smile = !say_hi;
-  s_speech_text = "Hi!";
+static void trigger_speech(void) {
+  s_speech_text = s_greetings[rand() % (sizeof(s_greetings) / sizeof(s_greetings[0]))];
+  s_show_speech = true;
+  s_show_smile = false;
   s_blink = false;
   layer_mark_dirty(s_robot_layer);
 
   if (s_speech_timer) app_timer_cancel(s_speech_timer);
   s_speech_timer = app_timer_register(SPEECH_DURATION_MS, speech_hide_callback, NULL);
-}
-
-// If the phone hasn't sent an AI-generated greeting back within
-// AI_TIMEOUT_MS (no signal, no key configured, API hiccup, whatever),
-// don't leave the robot standing there frozen - just fall back to the
-// normal canned reaction.
-static void ai_timeout_callback(void *data) {
-  s_ai_timeout_timer = NULL;
-  if (s_waiting_for_ai) {
-    s_waiting_for_ai = false;
-    trigger_speech();
-  }
-}
-
-// Sends the phone enough context (current steps, hour) to ask the
-// Anthropic API for a short, situational greeting. The phone already
-// knows the current weather from its own periodic fetch, so that isn't
-// duplicated here.
-static void request_ai_greeting(void) {
-  HealthValue steps = health_service_metric_accessible(HealthMetricStepCount,
-        time_start_of_today(), time(NULL))
-        ? health_service_sum_today(HealthMetricStepCount) : 0;
-
-  time_t now = time(NULL);
-  struct tm *t = localtime(&now);
-
-  DictionaryIterator *iter;
-  if (app_message_outbox_begin(&iter) == APP_MSG_OK) {
-    dict_write_uint8(iter, KEY_REQUEST_GREETING, 1);
-    dict_write_int32(iter, KEY_STEPS, (int32_t)steps);
-    dict_write_int32(iter, KEY_HOUR, t->tm_hour);
-    app_message_outbox_send();
-  }
-
-  s_waiting_for_ai = true;
-  if (s_ai_timeout_timer) app_timer_cancel(s_ai_timeout_timer);
-  s_ai_timeout_timer = app_timer_register(AI_TIMEOUT_MS, ai_timeout_callback, NULL);
 }
 
 // ---------------- TAP ----------------
@@ -724,7 +678,7 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
                         ((int32_t)now_ms - (int32_t)s_last_tap_ms);
 
   if (elapsed_ms >= 0 && elapsed_ms < DOUBLE_TAP_WINDOW_MS) {
-    request_ai_greeting();
+    trigger_speech();
     s_last_tap_sec = 0;
     s_last_tap_ms = 0;
   } else {
@@ -739,11 +693,10 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   }
 }
 
-// ---------------- APPMESSAGE (weather + AI greeting) ----------------
+// ---------------- APPMESSAGE (weather) ----------------
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *temp_tuple = dict_find(iter, KEY_TEMPERATURE);
   Tuple *cond_tuple = dict_find(iter, KEY_CONDITIONS);
-  Tuple *ai_tuple = dict_find(iter, KEY_AI_TEXT);
 
   if (temp_tuple) {
     snprintf(s_weather_buffer, sizeof(s_weather_buffer), "%d\xC2\xB0",
@@ -753,25 +706,6 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   if (cond_tuple) {
     strncpy(s_conditions, cond_tuple->value->cstring, sizeof(s_conditions) - 1);
     s_conditions[sizeof(s_conditions) - 1] = '\0';
-  }
-
-  if (ai_tuple && s_waiting_for_ai) {
-    s_waiting_for_ai = false;
-    if (s_ai_timeout_timer) {
-      app_timer_cancel(s_ai_timeout_timer);
-      s_ai_timeout_timer = NULL;
-    }
-    strncpy(s_ai_text_buffer, ai_tuple->value->cstring, sizeof(s_ai_text_buffer) - 1);
-    s_ai_text_buffer[sizeof(s_ai_text_buffer) - 1] = '\0';
-
-    s_speech_text = s_ai_text_buffer;
-    s_show_speech = true;
-    s_show_smile = false;
-    s_blink = false;
-    layer_mark_dirty(s_robot_layer);
-
-    if (s_speech_timer) app_timer_cancel(s_speech_timer);
-    s_speech_timer = app_timer_register(AI_SPEECH_DURATION_MS, speech_hide_callback, NULL);
   }
 
   evaluate_state();
@@ -796,27 +730,28 @@ static void window_load(Window *window) {
 
   s_time_font = fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
   s_small_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+  s_day_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
   s_speech_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
 
-  s_robot_layer = layer_create(GRect(0, 4, bounds.size.w, 112));
+  s_robot_layer = layer_create(GRect(0, 4, bounds.size.w, 80));
   layer_set_update_proc(s_robot_layer, robot_layer_update_proc);
   layer_add_child(window_layer, s_robot_layer);
 
-  s_time_layer = text_layer_create(GRect(0, 118, bounds.size.w, 48));
+  s_time_layer = text_layer_create(GRect(0, 86, bounds.size.w, 48));
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_text_color(s_time_layer, TEXT_COLOR);
   text_layer_set_font(s_time_layer, s_time_font);
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
-  s_steps_layer = text_layer_create(GRect(4, 168, bounds.size.w / 2 - 6, 22));
+  s_steps_layer = text_layer_create(GRect(4, 138, bounds.size.w / 2 - 6, 24));
   text_layer_set_background_color(s_steps_layer, GColorClear);
   text_layer_set_text_color(s_steps_layer, ACCENT_COLOR);
   text_layer_set_font(s_steps_layer, s_small_font);
   text_layer_set_text_alignment(s_steps_layer, GTextAlignmentLeft);
   layer_add_child(window_layer, text_layer_get_layer(s_steps_layer));
 
-  s_weather_layer = text_layer_create(GRect(bounds.size.w / 2 + 2, 168, bounds.size.w / 2 - 6, 22));
+  s_weather_layer = text_layer_create(GRect(bounds.size.w / 2 + 2, 138, bounds.size.w / 2 - 6, 24));
   text_layer_set_background_color(s_weather_layer, GColorClear);
   text_layer_set_text_color(s_weather_layer, ACCENT_COLOR);
   text_layer_set_font(s_weather_layer, s_small_font);
@@ -824,17 +759,17 @@ static void window_load(Window *window) {
   text_layer_set_text(s_weather_layer, s_weather_buffer);
   layer_add_child(window_layer, text_layer_get_layer(s_weather_layer));
 
-  s_day_layer = text_layer_create(GRect(0, bounds.size.h - 40, bounds.size.w, 20));
+  s_day_layer = text_layer_create(GRect(0, bounds.size.h - 56, bounds.size.w, 28));
   text_layer_set_background_color(s_day_layer, GColorClear);
   text_layer_set_text_color(s_day_layer, GColorLightGray);
-  text_layer_set_font(s_day_layer, s_small_font);
+  text_layer_set_font(s_day_layer, s_day_font);
   text_layer_set_text_alignment(s_day_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_day_layer));
 
-  s_date_layer = text_layer_create(GRect(0, bounds.size.h - 20, bounds.size.w, 20));
+  s_date_layer = text_layer_create(GRect(0, bounds.size.h - 28, bounds.size.w, 28));
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_text_color(s_date_layer, GColorLightGray);
-  text_layer_set_font(s_date_layer, s_small_font);
+  text_layer_set_font(s_date_layer, s_day_font);
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
 
@@ -849,7 +784,6 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
   if (s_anim_timer) app_timer_cancel(s_anim_timer);
   if (s_speech_timer) app_timer_cancel(s_speech_timer);
-  if (s_ai_timeout_timer) app_timer_cancel(s_ai_timeout_timer);
   layer_destroy(s_robot_layer);
   text_layer_destroy(s_time_layer);
   text_layer_destroy(s_day_layer);
