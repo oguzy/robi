@@ -669,6 +669,11 @@ static void bounce_reset_callback(void *data) {
 }
 
 static void tap_handler(AccelAxisType axis, int32_t direction) {
+  // The OS's own motion-wake gesture doesn't always catch a tap on the
+  // case, which made the watch look unresponsive - force the backlight on
+  // whenever the app itself sees a tap, so it's never relying on that.
+  light_enable_interaction();
+
   time_t now_sec;
   uint16_t now_ms;
   time_ms(&now_sec, &now_ms);
