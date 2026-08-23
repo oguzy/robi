@@ -686,17 +686,7 @@ static void bounce_reset_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
-// TEMP DIAGNOSTIC #2: flips the background color on every registered tap,
-// same as before, but this round is specifically to test with the screen
-// already awake (button-woken) rather than cold - isolating whether
-// tap_handler ever fires at all on this unit, independent of sleep state.
-// Remove once answered.
-static bool s_debug_tap_flag = false;
-
 static void tap_handler(AccelAxisType axis, int32_t direction) {
-  s_debug_tap_flag = !s_debug_tap_flag;
-  window_set_background_color(s_window, s_debug_tap_flag ? GColorRed : BG_COLOR);
-
   // The OS's own motion-wake gesture doesn't always catch a tap on the
   // case, which made the watch look unresponsive - force the backlight on
   // whenever the app itself sees a tap, so it's never relying on that.
