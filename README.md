@@ -83,6 +83,15 @@ knocking the watch case twice quickly, the same gesture the original Pip
 uses for its single-tap reactions. The HTML preview simulates this with a
 double-click on the screen since a browser has no equivalent gesture.
 
+**Wake the screen first.** Pebble only reliably delivers a watchface's own
+accelerometer-tap events once the display is already awake/lit - a knock
+on a fully asleep screen usually won't reach the app at all (Pebble's
+motion-triggered backlight wake is a separate, system-level gesture - a
+deliberate wrist flick toward your face - not the same thing as an app's
+own tap detection). So: flick your wrist (or press a button) to wake the
+screen, *then* double-tap for the greeting. This is a Pebble platform
+characteristic, not something the app can override.
+
 **Security note:** the weather key is entered through the phone app's
 Settings page and stored in the watchface's local storage on your phone —
 it is never baked into the source or the compiled `.pbw`, so it's safe to
