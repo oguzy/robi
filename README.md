@@ -83,6 +83,10 @@ knocking the watch case twice quickly, the same gesture the original Pip
 uses for its single-tap reactions. The HTML preview simulates this with a
 double-click on the screen since a browser has no equivalent gesture.
 
+**Tap firmly.** The accelerometer needs a distinct rap on the case (like
+knocking on a table), not a light finger tap - a soft tap can fall below
+its detection threshold and simply won't register.
+
 **Wake the screen first.** Pebble only reliably delivers a watchface's own
 accelerometer-tap events once the display is already awake/lit - a knock
 on a fully asleep screen usually won't reach the app at all (Pebble's
