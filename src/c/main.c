@@ -43,7 +43,6 @@ static TextLayer *s_weather_layer;
 
 static GFont s_time_font;
 static GFont s_small_font;
-static GFont s_day_font;
 static GFont s_speech_font;
 
 static char s_time_buffer[8];
@@ -729,47 +728,49 @@ static void window_load(Window *window) {
   window_set_background_color(window, BG_COLOR);
 
   s_time_font = fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
-  s_small_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-  s_day_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  s_small_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
   s_speech_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
 
-  s_robot_layer = layer_create(GRect(0, 4, bounds.size.w, 80));
+  s_robot_layer = layer_create(GRect(0, 4, bounds.size.w, 76));
   layer_set_update_proc(s_robot_layer, robot_layer_update_proc);
   layer_add_child(window_layer, s_robot_layer);
 
-  s_time_layer = text_layer_create(GRect(0, 86, bounds.size.w, 48));
+  s_time_layer = text_layer_create(GRect(0, 80, bounds.size.w, 48));
   text_layer_set_background_color(s_time_layer, GColorClear);
   text_layer_set_text_color(s_time_layer, TEXT_COLOR);
   text_layer_set_font(s_time_layer, s_time_font);
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
-  s_steps_layer = text_layer_create(GRect(4, 138, bounds.size.w / 2 - 6, 24));
+  // Steps and weather each get the full width on their own line now - at
+  // this font size, a half-width column isn't wide enough for something
+  // like "8543 steps (85%)" without wrapping into the row below.
+  s_steps_layer = text_layer_create(GRect(0, 128, bounds.size.w, 25));
   text_layer_set_background_color(s_steps_layer, GColorClear);
   text_layer_set_text_color(s_steps_layer, ACCENT_COLOR);
   text_layer_set_font(s_steps_layer, s_small_font);
-  text_layer_set_text_alignment(s_steps_layer, GTextAlignmentLeft);
+  text_layer_set_text_alignment(s_steps_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_steps_layer));
 
-  s_weather_layer = text_layer_create(GRect(bounds.size.w / 2 + 2, 138, bounds.size.w / 2 - 6, 24));
+  s_weather_layer = text_layer_create(GRect(0, 153, bounds.size.w, 25));
   text_layer_set_background_color(s_weather_layer, GColorClear);
   text_layer_set_text_color(s_weather_layer, ACCENT_COLOR);
   text_layer_set_font(s_weather_layer, s_small_font);
-  text_layer_set_text_alignment(s_weather_layer, GTextAlignmentRight);
+  text_layer_set_text_alignment(s_weather_layer, GTextAlignmentCenter);
   text_layer_set_text(s_weather_layer, s_weather_buffer);
   layer_add_child(window_layer, text_layer_get_layer(s_weather_layer));
 
-  s_day_layer = text_layer_create(GRect(0, bounds.size.h - 56, bounds.size.w, 28));
+  s_day_layer = text_layer_create(GRect(0, bounds.size.h - 50, bounds.size.w, 25));
   text_layer_set_background_color(s_day_layer, GColorClear);
   text_layer_set_text_color(s_day_layer, GColorLightGray);
-  text_layer_set_font(s_day_layer, s_day_font);
+  text_layer_set_font(s_day_layer, s_small_font);
   text_layer_set_text_alignment(s_day_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_day_layer));
 
-  s_date_layer = text_layer_create(GRect(0, bounds.size.h - 28, bounds.size.w, 28));
+  s_date_layer = text_layer_create(GRect(0, bounds.size.h - 25, bounds.size.w, 25));
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_text_color(s_date_layer, GColorLightGray);
-  text_layer_set_font(s_date_layer, s_day_font);
+  text_layer_set_font(s_date_layer, s_small_font);
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
 
