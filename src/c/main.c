@@ -686,7 +686,17 @@ static void bounce_reset_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
+// TEMP DIAGNOSTIC: flips the background color on every registered tap and
+// leaves it flipped (no timer). The e-paper display stays visible without
+// the backlight, so this is checkable by eye in room light even if the
+// backlight itself never turns on - it isolates whether tap_handler is
+// being invoked at all while the screen is asleep. Remove once answered.
+static bool s_debug_tap_flag = false;
+
 static void tap_handler(AccelAxisType axis, int32_t direction) {
+  s_debug_tap_flag = !s_debug_tap_flag;
+  window_set_background_color(s_window, s_debug_tap_flag ? GColorRed : BG_COLOR);
+
   // The OS's own motion-wake gesture doesn't always catch a tap on the
   // case, which made the watch look unresponsive - force the backlight on
   // whenever the app itself sees a tap, so it's never relying on that.
