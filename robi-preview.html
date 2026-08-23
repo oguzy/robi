@@ -41,7 +41,7 @@
     cursor: pointer; user-select: none;
   }
 
-  .robot-wrap { position: absolute; top: 4px; left: 0; width: 100%; height: 112px; }
+  .robot-wrap { position: absolute; top: 4px; left: 0; width: 100%; height: 74px; }
   .scene { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; overflow: hidden; }
   .figure { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }
 
@@ -51,71 +51,71 @@
     transform: translateX(-50%); z-index: 0; transition: width 0.2s, opacity 0.2s;
   }
 
-  .antenna-pole { position: absolute; left: 50%; top: 1px; width: 2px; height: 9px; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 4px var(--accent-glow); }
-  .antenna-dot { position: absolute; left: 50%; top: -4px; width: 6px; height: 6px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #baffff, var(--accent) 70%); box-shadow: 0 0 7px var(--accent-glow); transform: translateX(-3px); }
-  .antenna-ring { position: absolute; left: 50%; top: 9px; width: 10px; height: 4px; border-radius: 50%; background: var(--body-lo); box-shadow: inset 0 1px 2px rgba(0,0,0,.6); transform: translateX(-5px); }
+  .antenna-pole { position: absolute; left: 50%; top: 1px; width: 2px; height: 6px; background: linear-gradient(180deg, var(--accent), var(--accent-dim)); box-shadow: 0 0 4px var(--accent-glow); }
+  .antenna-dot { position: absolute; left: 50%; top: -2px; width: 4px; height: 4px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #baffff, var(--accent) 70%); box-shadow: 0 0 7px var(--accent-glow); transform: translateX(-2px); }
+  .antenna-ring { position: absolute; left: 50%; top: 6px; width: 6px; height: 2px; border-radius: 50%; background: var(--body-lo); box-shadow: inset 0 1px 2px rgba(0,0,0,.6); transform: translateX(-3px); }
 
   .head {
-    position: absolute; top: 10px; left: 50%; width: 64px; height: 46px;
+    position: absolute; top: 6px; left: 50%; width: 40px; height: 29px;
     background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 45%, var(--body-lo) 100%);
-    border-radius: 17px 17px 15px 15px;
-    box-shadow: 0 5px 9px rgba(0,0,0,0.45), inset 0 2px 0 rgba(255,255,255,0.18), inset 0 -8px 12px rgba(0,0,0,0.35);
+    border-radius: 11px 11px 9px 9px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -5px 8px rgba(0,0,0,0.35);
     transform: translateX(-50%);
   }
   .head-shine {
-    position: absolute; top: 5px; left: 9px; width: 20px; height: 8px; border-radius: 50%;
+    position: absolute; top: 3px; left: 6px; width: 12px; height: 5px; border-radius: 50%;
     background: rgba(255,255,255,0.22); filter: blur(0.5px);
   }
   .visor {
-    position: absolute; top: 15px; left: 50%; width: 52px; height: 20px;
-    background: var(--visor); border-radius: 10px;
-    box-shadow: inset 0 3px 5px rgba(0,0,0,0.65), inset 0 -1px 0 rgba(255,255,255,0.05);
+    position: absolute; top: 9px; left: 50%; width: 32px; height: 12px;
+    background: var(--visor); border-radius: 6px;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.65), inset 0 -1px 0 rgba(255,255,255,0.05);
     transform: translateX(-50%);
-    display: flex; align-items: center; justify-content: center; gap: 9px;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
   }
   .eye {
-    width: 14px; height: 16px; border-radius: 4px;
+    width: 9px; height: 10px; border-radius: 2px;
     background: radial-gradient(circle at 35% 28%, #c8ffff, var(--accent) 62%, var(--accent-dim) 100%);
     box-shadow: 0 0 8px var(--accent-glow), 0 0 2px #fff;
     transition: height 0.09s ease, margin-top 0.09s ease;
   }
-  .mouth { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); width: 14px; height: 2px; border-radius: 1px; background: var(--accent-dim); box-shadow: 0 0 3px var(--accent-glow); transition: opacity 0.08s linear, width 0.15s ease, height 0.15s ease, border-radius 0.15s ease; }
+  .mouth { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 9px; height: 1px; border-radius: 1px; background: var(--accent-dim); box-shadow: 0 0 3px var(--accent-glow); transition: opacity 0.08s linear, width 0.15s ease, height 0.15s ease, border-radius 0.15s ease; }
   .mouth.smile {
-    width: 18px; height: 9px; background: transparent;
-    border: 2px solid var(--accent-dim); border-top: none;
-    border-radius: 0 0 16px 16px;
+    width: 11px; height: 6px; background: transparent;
+    border: 1px solid var(--accent-dim); border-top: none;
+    border-radius: 0 0 10px 10px;
     box-shadow: 0 0 4px var(--accent-glow);
   }
 
   .torso {
-    position: absolute; top: 55px; left: 50%; width: 50px; height: 34px;
+    position: absolute; top: 34px; left: 50%; width: 31px; height: 21px;
     background: linear-gradient(165deg, var(--body-hi) 0%, var(--body-mid) 45%, var(--body-lo) 100%);
-    border-radius: 15px;
-    box-shadow: 0 5px 9px rgba(0,0,0,0.4), inset 0 2px 0 rgba(255,255,255,0.15), inset 0 -9px 13px rgba(0,0,0,0.35);
+    border-radius: 9px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -6px 8px rgba(0,0,0,0.35);
     transform: translateX(-50%);
   }
   .chest-panel {
-    position: absolute; top: 6px; left: 50%; width: 34px; height: 13px; border-radius: 7px;
+    position: absolute; top: 4px; left: 50%; width: 21px; height: 8px; border-radius: 4px;
     background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0));
     transform: translateX(-50%);
   }
   .chest-light-halo {
-    position: absolute; top: 6px; left: 50%; width: 15px; height: 15px; border-radius: 50%;
+    position: absolute; top: 4px; left: 50%; width: 9px; height: 9px; border-radius: 50%;
     background: var(--accent-glow); filter: blur(2px);
     transform: translateX(-50%); animation: pulse 2.2s ease-in-out infinite;
   }
   .chest-light {
-    position: absolute; top: 9px; left: 50%; width: 7px; height: 7px; border-radius: 50%;
+    position: absolute; top: 6px; left: 50%; width: 4px; height: 4px; border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, #d6ffff, var(--accent) 70%);
     box-shadow: 0 0 5px 1px var(--accent-glow);
     transform: translateX(-50%); animation: pulse 2.2s ease-in-out infinite;
   }
   .chest-vent {
-    position: absolute; bottom: 6px; width: 7px; height: 2px; border-radius: 1px;
+    position: absolute; bottom: 4px; width: 4px; height: 1px; border-radius: 1px;
     background: rgba(0,0,0,0.4); box-shadow: 0 1px 0 rgba(255,255,255,0.06);
   }
-  .chest-vent.v1 { left: 12px; }
-  .chest-vent.v2 { left: 24px; }
+  .chest-vent.v1 { left: 7px; }
+  .chest-vent.v2 { left: 15px; }
   @keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
 
   .arm, .leg {
@@ -124,25 +124,25 @@
     border-radius: 6px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
   }
-  .arm { top: 57px; width: 10px; height: 26px; }
-  .arm.left { left: calc(50% - 36px); transform-origin: top center; }
-  .arm.right { left: calc(50% + 26px); transform-origin: top center; }
-  .leg { top: 87px; width: 12px; height: 24px; }
-  .leg.left { left: calc(50% - 15px); transform-origin: top center; }
-  .leg.right { left: calc(50% + 3px); transform-origin: top center; }
+  .arm { top: 36px; width: 6px; height: 16px; border-radius: 4px; }
+  .arm.left { left: calc(50% - 22px); transform-origin: top center; }
+  .arm.right { left: calc(50% + 16px); transform-origin: top center; }
+  .leg { top: 53px; width: 7px; height: 15px; }
+  .leg.left { left: calc(50% - 9px); transform-origin: top center; }
+  .leg.right { left: calc(50% + 2px); transform-origin: top center; }
 
   .joint-ball {
-    position: absolute; top: -4px; left: 50%; width: 10px; height: 10px; border-radius: 50%;
+    position: absolute; top: -2px; left: 50%; width: 6px; height: 6px; border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, var(--body-hi), var(--body-lo) 75%);
     box-shadow: 0 0 0 1px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.4);
     transform: translateX(-50%);
   }
   .cuff {
-    position: absolute; bottom: 6px; left: 0; width: 100%; height: 2px; border-radius: 1px;
+    position: absolute; bottom: 4px; left: 0; width: 100%; height: 1px; border-radius: 1px;
     background: var(--accent-dim); box-shadow: 0 0 3px var(--accent-glow);
   }
   .cap {
-    position: absolute; bottom: -3px; left: 50%; width: calc(100% + 4px); height: 8px; border-radius: 4px;
+    position: absolute; bottom: -2px; left: 50%; width: calc(100% + 2px); height: 5px; border-radius: 2px;
     background: linear-gradient(165deg, var(--body-hi), var(--body-lo));
     box-shadow: 0 1px 3px rgba(0,0,0,0.4);
     transform: translateX(-50%);
@@ -217,9 +217,9 @@
     position: absolute; background: var(--visor); border-radius: 6px;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.6);
   }
-  .sleep-eye { position: absolute; width: 7px; height: 2px; background: var(--accent-dim); border-radius: 1px; }
+  .sleep-eye { position: absolute; width: 4px; height: 1px; background: var(--accent-dim); border-radius: 1px; }
   .sleep-chest {
-    position: absolute; width: 6px; height: 6px; border-radius: 50%;
+    position: absolute; width: 4px; height: 4px; border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, #bdf6f6, var(--accent-dim) 75%);
     box-shadow: 0 0 4px var(--accent-glow);
   }
@@ -241,7 +241,7 @@
   }
 
   .bubble {
-    position: absolute; top: -20px; left: 58%; background: #fff; color: #111; font-size: 11px; font-weight: 700;
+    position: absolute; top: 2px; left: 58%; background: #fff; color: #111; font-size: 11px; font-weight: 700;
     padding: 5px 9px; border-radius: 10px; white-space: nowrap; opacity: 0;
     box-shadow: 0 3px 8px rgba(0,0,0,0.35);
     transform: scale(0.6) translateY(6px);
@@ -252,14 +252,14 @@
   .bubble.show { opacity: 1; transform: scale(1) translateY(0); }
 
   .time {
-    position: absolute; top: 122px; width: 100%; text-align: center;
+    position: absolute; top: 80px; width: 100%; text-align: center;
     font-size: 46px; font-weight: 700; color: var(--text); letter-spacing: 1px;
     font-variant-numeric: tabular-nums;
     text-shadow: 0 0 18px rgba(255,255,255,0.08);
   }
-  .row { position: absolute; top: 172px; width: 100%; display: flex; justify-content: space-between; padding: 0 8px; box-sizing: border-box; font-size: 14px; font-weight: 700; color: var(--accent); }
-  .day { position: absolute; bottom: 24px; width: 100%; text-align: center; font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
-  .date { position: absolute; bottom: 6px; width: 100%; text-align: center; font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  .row { position: absolute; top: 142px; width: 100%; display: flex; justify-content: space-between; padding: 0 8px; box-sizing: border-box; font-size: 16px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .day { position: absolute; bottom: 30px; width: 100%; text-align: center; font-size: 18px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  .date { position: absolute; bottom: 6px; width: 100%; text-align: center; font-size: 18px; font-weight: 700; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
 
   .state-label { margin-top: 14px; color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; min-height: 16px; }
   .controls { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 340px; }
@@ -352,18 +352,12 @@
   <button data-state="cold">Cold/Snow</button>
   <button data-state="sleepy">Night (Bed)</button>
   <button data-state="auto">Auto (random)</button>
-  <button id="aiToggle">AI greetings: off (demo)</button>
 </div>
 
 <div class="hint">
   Smooth, continuous motion now — not stepped frames. Walking/running scroll
   a road; stairs scroll a diagonal "treadmill" pattern behind a climbing
   robot; night puts it to bed. Double-tap the screen fast for a greeting.
-  <br><br>
-  "AI greetings" toggle below is a <b>local simulation only</b> — a browser
-  file can't safely hold a real API key. The real version (in the firmware
-  + phone app) actually calls Claude for a fresh line each time; see the
-  README for setup.
 </div>
 
 <script>
@@ -399,24 +393,6 @@
   let speechTimeout = null;
   let greetIndex = 0;
   let isGreeting = false;
-  let aiDemoMode = false;
-
-  const aiDemoLines = [
-    () => `Nice, ${fakeSteps} steps!`,
-    () => `${fakeTemp}\u00b0 out there today`,
-    () => {
-      const h = new Date().getHours();
-      return (h >= 22 || h < 6) ? 'Up late, huh?' : 'Good to see you!';
-    },
-    () => 'Keep going, almost there!',
-    () => 'You got this today',
-    () => `${Math.round((fakeSteps / STEP_GOAL) * 100)}% to your goal`,
-  ];
-
-  function pickAiDemoLine() {
-    const fn = aiDemoLines[Math.floor(Math.random() * aiDemoLines.length)];
-    return fn();
-  }
   let isBlinking = false;
   let nextBlinkAt = performance.now() + 3000;
 
@@ -493,7 +469,7 @@
     showFigure(false);
     groundShadow.style.opacity = 0;
 
-    const bedW = 128, bedH = 30, bedX = 100 - bedW / 2, bedY = 76;
+    const bedW = 79, bedH = 19, bedX = 100 - bedW / 2, bedY = 46;
 
     // soft contact shadow under the whole bed
     const shadow = document.createElement('div');
@@ -504,20 +480,20 @@
     // headboard (taller panel behind the pillow end)
     const headboard = document.createElement('div');
     headboard.className = 'bed-frame';
-    Object.assign(headboard.style, { left: (bedX - 6) + 'px', top: (bedY - 16) + 'px', width: '14px', height: (bedH + 28) + 'px' });
+    Object.assign(headboard.style, { left: (bedX - 4) + 'px', top: (bedY - 10) + 'px', width: '9px', height: (bedH + 17) + 'px' });
     scene.appendChild(headboard);
 
     // frame
     const frame = document.createElement('div');
     frame.className = 'bed-frame';
-    Object.assign(frame.style, { left: (bedX - 2) + 'px', top: (bedY - 2) + 'px', width: (bedW + 4) + 'px', height: (bedH + 10) + 'px' });
+    Object.assign(frame.style, { left: (bedX - 1) + 'px', top: (bedY - 1) + 'px', width: (bedW + 2) + 'px', height: (bedH + 6) + 'px' });
     scene.appendChild(frame);
 
     // legs
-    [bedX + 2, bedX + bedW - 6].forEach(x => {
+    [bedX + 1, bedX + bedW - 4].forEach(x => {
       const leg = document.createElement('div');
       leg.className = 'bed-leg';
-      Object.assign(leg.style, { left: x + 'px', top: (bedY + bedH + 8) + 'px' });
+      Object.assign(leg.style, { left: x + 'px', top: (bedY + bedH + 5) + 'px' });
       scene.appendChild(leg);
     });
 
@@ -529,18 +505,18 @@
     [0.33, 0.66].forEach(f => {
       const stitch = document.createElement('div');
       stitch.className = 'bed-stitch';
-      Object.assign(stitch.style, { left: (bedX + 4) + 'px', top: (bedY + bedH * f) + 'px', width: (bedW - 8) + 'px' });
+      Object.assign(stitch.style, { left: (bedX + 2) + 'px', top: (bedY + bedH * f) + 'px', width: (bedW - 4) + 'px' });
       scene.appendChild(stitch);
     });
 
     // pillow with a soft crease
     const pillow = document.createElement('div');
     pillow.className = 'bed-pillow';
-    Object.assign(pillow.style, { left: (bedX + 4) + 'px', top: (bedY - 8) + 'px', width: '32px', height: '17px' });
+    Object.assign(pillow.style, { left: (bedX + 2) + 'px', top: (bedY - 5) + 'px', width: '20px', height: '11px' });
     scene.appendChild(pillow);
     const crease = document.createElement('div');
     crease.className = 'bed-pillow-crease';
-    Object.assign(crease.style, { left: (bedX + 10) + 'px', top: (bedY - 1) + 'px', width: '20px' });
+    Object.assign(crease.style, { left: (bedX + 6) + 'px', top: (bedY - 1) + 'px', width: '12px' });
     scene.appendChild(crease);
 
     // sleeping robot: same shaded-panel language as the standing figure -
@@ -549,39 +525,39 @@
     const body = document.createElement('div');
     body.className = 'sleep-body';
     body.id = 'sleepBody';
-    Object.assign(body.style, { left: (bedX + 32) + 'px', top: (bedY - 4) + 'px', width: '68px', height: '19px' });
+    Object.assign(body.style, { left: (bedX + 20) + 'px', top: (bedY - 2) + 'px', width: '42px', height: '12px' });
     scene.appendChild(body);
 
     const chest = document.createElement('div');
     chest.className = 'sleep-chest';
-    Object.assign(chest.style, { left: (bedX + 50) + 'px', top: (bedY + 3) + 'px' });
+    Object.assign(chest.style, { left: (bedX + 31) + 'px', top: (bedY + 4) + 'px' });
     scene.appendChild(chest);
 
     const sleepHead = document.createElement('div');
     sleepHead.className = 'sleep-body';
-    Object.assign(sleepHead.style, { left: (bedX + 8) + 'px', top: (bedY - 9) + 'px', width: '28px', height: '25px' });
+    Object.assign(sleepHead.style, { left: (bedX + 5) + 'px', top: (bedY - 6) + 'px', width: '17px', height: '16px' });
     scene.appendChild(sleepHead);
 
     const visor = document.createElement('div');
     visor.className = 'sleep-visor';
-    Object.assign(visor.style, { left: (bedX + 12) + 'px', top: (bedY - 1) + 'px', width: '20px', height: '9px' });
+    Object.assign(visor.style, { left: (bedX + 7) + 'px', top: (bedY - 1) + 'px', width: '12px', height: '6px' });
     scene.appendChild(visor);
 
-    [15, 24].forEach(x => {
+    [9, 13].forEach(x => {
       const eye = document.createElement('div');
       eye.className = 'sleep-eye';
-      Object.assign(eye.style, { left: (bedX + x) + 'px', top: (bedY + 2.5) + 'px' });
+      Object.assign(eye.style, { left: (bedX + x) + 'px', top: (bedY + 1.5) + 'px' });
       scene.appendChild(eye);
     });
 
     // blanket with a fold line for a little dimension
     const blanket = document.createElement('div');
     blanket.className = 'bed-blanket';
-    Object.assign(blanket.style, { left: (bedX + 28) + 'px', top: (bedY + bedH - 9) + 'px', width: (bedW - 32) + 'px', height: '9px' });
+    Object.assign(blanket.style, { left: (bedX + 17) + 'px', top: (bedY + bedH - 6) + 'px', width: (bedW - 20) + 'px', height: '6px' });
     scene.appendChild(blanket);
     const fold = document.createElement('div');
     fold.className = 'bed-blanket-fold';
-    Object.assign(fold.style, { left: (bedX + 34) + 'px', top: (bedY + bedH - 5) + 'px', width: (bedW - 44) + 'px' });
+    Object.assign(fold.style, { left: (bedX + 21) + 'px', top: (bedY + bedH - 4) + 'px', width: (bedW - 28) + 'px' });
     scene.appendChild(fold);
 
     ['zSmall', 'zBig'].forEach((id, i) => {
@@ -589,7 +565,7 @@
       z.className = 'sleep-z';
       z.id = id;
       z.textContent = i === 0 ? 'z' : 'Z';
-      Object.assign(z.style, { left: (bedX + 38 + i * 12) + 'px', top: (bedY - 32 - i * 12) + 'px', fontSize: (10 + i * 5) + 'px' });
+      Object.assign(z.style, { left: (bedX + 24 + i * 7) + 'px', top: (bedY - 20 - i * 7) + 'px', fontSize: (7 + i * 3) + 'px' });
       scene.appendChild(z);
     });
   }
@@ -774,37 +750,15 @@
     }, 140);
   }
 
+  const GREETINGS = ['Hi!', 'Hello!', 'Hoi!'];
+
   function greet() {
     if (state === 'sleepy') return;
     isGreeting = true;
 
-    if (aiDemoMode) {
-      bubble.textContent = pickAiDemoLine();
-      bubble.classList.add('show');
-      armR.style.transform = 'rotate(-150deg)';
-      setEyeForced(20);
-
-      if (speechTimeout) clearTimeout(speechTimeout);
-      speechTimeout = setTimeout(() => {
-        bubble.classList.remove('show');
-        armR.style.transform = '';
-        isGreeting = false;
-        applyStaticLook();
-      }, 2600);
-      return;
-    }
-
-    // 50/50: either say hi with a bubble + wave, or just smile
-    const sayHi = Math.random() < 0.5;
-
-    if (sayHi) {
-      bubble.textContent = 'Hi!';
-      bubble.classList.add('show');
-      armR.style.transform = 'rotate(-150deg)';
-    } else {
-      mouth.style.width = '';
-      mouth.classList.add('smile');
-    }
+    bubble.textContent = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+    bubble.classList.add('show');
+    armR.style.transform = 'rotate(-150deg)';
     setEyeForced(20);
 
     if (speechTimeout) clearTimeout(speechTimeout);
@@ -837,13 +791,6 @@
       clearInterval(autoTimer);
       setState(btn.dataset.state);
     });
-  });
-
-  const aiToggleBtn = document.getElementById('aiToggle');
-  aiToggleBtn.addEventListener('click', () => {
-    aiDemoMode = !aiDemoMode;
-    aiToggleBtn.classList.toggle('active', aiDemoMode);
-    aiToggleBtn.textContent = aiDemoMode ? 'AI greetings: on (demo)' : 'AI greetings: off (demo)';
   });
 
   screen.addEventListener('click', () => {

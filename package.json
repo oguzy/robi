@@ -27,11 +27,7 @@
       "TEMPERATURE",
       "CONDITIONS",
       "WEATHER_ICON",
-      "REQUEST_WEATHER",
-      "REQUEST_GREETING",
-      "AI_TEXT",
-      "STEPS",
-      "HOUR"
+      "REQUEST_WEATHER"
     ],
     "resources": {
       "media": []
