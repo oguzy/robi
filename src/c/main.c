@@ -21,6 +21,9 @@ enum {
 
 typedef enum {
   ROBOT_IDLE,
+  ROBOT_READING,
+  ROBOT_WORKING,
+  ROBOT_EATING,
   ROBOT_WALKING,
   ROBOT_RUNNING,
   ROBOT_STAIRS_UP,
@@ -31,6 +34,10 @@ typedef enum {
   ROBOT_WEATHER_COLD,
   ROBOT_SLEEPY
 } RobotState;
+
+// pick_idle_activity() (defined below, near trigger_speech) is called from
+// tick_handler, which comes earlier in the file than its definition.
+static void pick_idle_activity(void);
 
 static Window *s_window;
 static Layer *s_robot_layer;
@@ -58,6 +65,7 @@ static RobotState s_state = ROBOT_IDLE;
 static int s_anim_phase = 0;
 static bool s_goal_celebrated_today = false;
 static AppTimer *s_anim_timer = NULL;
+static int s_idle_activity_countdown = 0;
 
 static int16_t s_last_z_avg = 0;
 static bool s_accel_streaming = false;
@@ -78,6 +86,12 @@ static bool is_special_time(void) {
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
   return (t->tm_hour % 12 == 11 && t->tm_min == 11);
+}
+
+// The "nothing else going on" states, cycled through randomly by
+// pick_idle_activity() instead of just standing still.
+static bool is_idle_family(RobotState s) {
+  return s == ROBOT_IDLE || s == ROBOT_READING || s == ROBOT_WORKING || s == ROBOT_EATING;
 }
 
 static bool sample_stairs_direction(int *direction_out) {
@@ -109,10 +123,10 @@ static void evaluate_state(void) {
   // Raw accelerometer streaming (needed only for the stairs-direction
   // heuristic below) is subscribed just-in-time and dropped the rest of the
   // time. Keeping it running continuously fights the accelerometer's
-  // low-power tap-interrupt mode, which is what both the watch's own
-  // tap-to-wake gesture and our double-tap greeting rely on - with it
-  // subscribed all the time, taps stopped registering once the screen went
-  // to sleep.
+  // low-power tap-interrupt mode, which is what the watch's own tap-to-wake
+  // gesture and our own shake-to-greet detection both rely on - with it
+  // subscribed all the time, taps/shakes stopped registering once the
+  // screen went to sleep.
   bool want_accel_streaming = (activities & HealthActivityWalk) != 0;
   if (want_accel_streaming != s_accel_streaming) {
     if (want_accel_streaming) {
@@ -143,7 +157,16 @@ static void evaluate_state(void) {
   if (strcmp(s_conditions, "Snow") == 0) { s_state = ROBOT_WEATHER_COLD; return; }
   if (strcmp(s_conditions, "Clear") == 0) { s_state = ROBOT_WEATHER_SUN; return; }
 
-  s_state = ROBOT_IDLE;
+  // Nothing else applies. If we're arriving here fresh (previous state
+  // wasn't already one of the idle-family states), drop into plain idle and
+  // ask tick_handler to reroll a time-appropriate activity on its very next
+  // tick. If we're already idle-family, leave the current activity alone -
+  // tick_handler's countdown decides when to change it, not this function
+  // (which runs far more often, and would otherwise make it flicker).
+  if (!is_idle_family(s_state)) {
+    s_state = ROBOT_IDLE;
+    s_idle_activity_countdown = 0;
+  }
 }
 
 // ---------------- ANIMATION TICK ----------------
@@ -154,6 +177,7 @@ static void anim_timer_callback(void *data) {
   if (s_state == ROBOT_GOAL_REACHED && s_anim_phase > 20) {
     s_state = ROBOT_IDLE;
     s_anim_phase = 0;
+    s_idle_activity_countdown = 0;
   }
 
   bool needs_smooth_anim =
@@ -345,6 +369,60 @@ static void draw_sun(GContext *ctx, GRect head) {
   }
 }
 
+// An open book held in front of the torso, for ROBOT_READING.
+static void draw_book(GContext *ctx, GRect torso) {
+  int bw = 18, bh = 8;
+  int bx = torso.origin.x + torso.size.w / 2 - bw / 2;
+  int by = torso.origin.y + torso.size.h - 5;
+
+  GRect left_page = GRect(bx, by, bw / 2, bh);
+  GRect right_page = GRect(bx + bw / 2, by, bw / 2, bh);
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_fill_rect(ctx, left_page, 1, GCornersLeft);
+  graphics_fill_rect(ctx, right_page, 1, GCornersRight);
+
+  graphics_context_set_stroke_color(ctx, BODY_MID);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_line(ctx, GPoint(bx + bw / 2, by), GPoint(bx + bw / 2, by + bh));
+
+  graphics_context_set_fill_color(ctx, GColorLightGray);
+  graphics_fill_rect(ctx, GRect(bx + 2, by + 2, 5, 1), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(bx + 2, by + 5, 5, 1), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(bx + bw / 2 + 2, by + 2, 5, 1), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(bx + bw / 2 + 2, by + 5, 5, 1), 0, GCornerNone);
+}
+
+// A little laptop/tablet in front of the torso, for ROBOT_WORKING. The
+// on-screen line length shifts with phase for a subtle "typing" feel.
+static void draw_laptop(GContext *ctx, GRect torso, int phase) {
+  int lx = torso.origin.x + torso.size.w / 2 - 9;
+  int ly = torso.origin.y + torso.size.h + 1;
+
+  GRect base = GRect(lx, ly, 18, 2);
+  GRect screen = GRect(lx + 2, ly - 8, 14, 8);
+  graphics_context_set_fill_color(ctx, BODY_MID);
+  graphics_fill_rect(ctx, base, 1, GCornersAll);
+  graphics_context_set_fill_color(ctx, VISOR_COLOR);
+  graphics_fill_rect(ctx, screen, 1, GCornersAll);
+
+  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  int line_len = 4 + (phase % 3) * 2;
+  graphics_fill_rect(ctx, GRect(screen.origin.x + 2, screen.origin.y + 2, line_len, 1), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(screen.origin.x + 2, screen.origin.y + 5, 6, 1), 0, GCornerNone);
+}
+
+// A snack held up near the head, for ROBOT_EATING.
+static void draw_snack(GContext *ctx, GRect head) {
+  int fx = head.origin.x + head.size.w + 3;
+  int fy = head.origin.y + head.size.h - 8;
+  graphics_context_set_fill_color(ctx, GColorChromeYellow);
+  graphics_fill_circle(ctx, GPoint(fx, fy), 4);
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_fill_circle(ctx, GPoint(fx - 1, fy - 1), 1);
+  graphics_context_set_fill_color(ctx, BG_COLOR);
+  graphics_fill_circle(ctx, GPoint(fx + 2, fy + 1), 2);
+}
+
 static void draw_speech_bubble(GContext *ctx, GRect head, GRect bounds, const char *text) {
   int bubble_w = 64, bubble_h = 26;
   int bubble_x = head.origin.x + head.size.w - 15;
@@ -451,6 +529,21 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       break;
     case ROBOT_WEATHER_COLD:
       tilt = sine_wave(1, TRIG_MAX_ANGLE / 6);
+      break;
+    case ROBOT_IDLE:
+      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      break;
+    case ROBOT_READING:
+      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      tilt = sine_wave(1, TRIG_MAX_ANGLE / 40);
+      break;
+    case ROBOT_WORKING:
+      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 8);
+      break;
+    case ROBOT_EATING:
+      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 20);
       break;
     default:
       break;
@@ -569,6 +662,9 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   if (s_state == ROBOT_GOAL_REACHED) draw_confetti(ctx, head);
   if (s_state == ROBOT_WEATHER_RAIN) draw_rain(ctx, head);
   if (s_state == ROBOT_WEATHER_SUN) draw_sun(ctx, head);
+  if (s_state == ROBOT_READING) draw_book(ctx, torso);
+  if (s_state == ROBOT_WORKING) draw_laptop(ctx, torso, s_anim_phase);
+  if (s_state == ROBOT_EATING) draw_snack(ctx, head);
   if (s_show_speech) draw_speech_bubble(ctx, head, bounds, s_speech_text);
 }
 
@@ -618,9 +714,14 @@ static void health_handler(HealthEventType event, void *context) {
   }
 }
 
-// ---------------- BLINK ----------------
+// ---------------- BLINK / SMILE ----------------
 static void blink_timer_callback(void *data) {
   s_blink = false;
+  layer_mark_dirty(s_robot_layer);
+}
+
+static void idle_smile_timer_callback(void *data) {
+  s_show_smile = false;
   layer_mark_dirty(s_robot_layer);
 }
 
@@ -629,10 +730,18 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 
   if (units_changed & MINUTE_UNIT) update_steps();
 
-  if (s_state == ROBOT_IDLE && (tick_time->tm_sec % 9) == 0 && (rand() % 3 == 0)) {
-    s_blink = true;
-    layer_mark_dirty(s_robot_layer);
-    app_timer_register(180, blink_timer_callback, NULL);
+  // Small idle-family micro-expressions: mostly a blink, occasionally a
+  // smile instead, so the robot doesn't look frozen between activities.
+  if (is_idle_family(s_state) && (tick_time->tm_sec % 9) == 0 && (rand() % 3 == 0)) {
+    if (rand() % 4 == 0) {
+      s_show_smile = true;
+      layer_mark_dirty(s_robot_layer);
+      app_timer_register(1500, idle_smile_timer_callback, NULL);
+    } else {
+      s_blink = true;
+      layer_mark_dirty(s_robot_layer);
+      app_timer_register(180, blink_timer_callback, NULL);
+    }
   }
 
   if (is_special_time()) {
@@ -648,10 +757,22 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     }
   }
 
-  if (s_state == ROBOT_IDLE || s_state == ROBOT_SLEEPY ||
+  if (is_idle_family(s_state) || s_state == ROBOT_SLEEPY ||
       s_state == ROBOT_WEATHER_SUN || s_state == ROBOT_WEATHER_RAIN ||
       s_state == ROBOT_WEATHER_COLD) {
     evaluate_state();
+  }
+
+  // Reroll which idle activity is showing every so often, rather than on
+  // every evaluate_state() call above (which would make it flicker). A
+  // countdown of 0 (fresh arrival into idle, or right after a celebration)
+  // rerolls immediately instead of waiting out a stale countdown.
+  if (is_idle_family(s_state)) {
+    if (s_idle_activity_countdown <= 0) {
+      pick_idle_activity();
+    } else {
+      s_idle_activity_countdown--;
+    }
   }
 }
 
@@ -662,12 +783,8 @@ static void speech_hide_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
-// Double-tap reaction: pick a random greeting word and show it in a speech
-// bubble alongside a wave.
-static const char *const s_greetings[] = { "Hi!", "Hello!", "Hoi!" };
-
-static void trigger_speech(void) {
-  s_speech_text = s_greetings[rand() % (sizeof(s_greetings) / sizeof(s_greetings[0]))];
+static void show_speech_text(const char *text) {
+  s_speech_text = text;
   s_show_speech = true;
   s_show_smile = false;
   s_blink = false;
@@ -675,6 +792,65 @@ static void trigger_speech(void) {
 
   if (s_speech_timer) app_timer_cancel(s_speech_timer);
   s_speech_timer = app_timer_register(SPEECH_DURATION_MS, speech_hide_callback, NULL);
+}
+
+// Shake reaction: pick a random greeting word and show it in a speech
+// bubble alongside a wave.
+static const char *const s_greetings[] = { "Hi!", "Hello!", "Hoi!" };
+
+static void trigger_speech(void) {
+  show_speech_text(s_greetings[rand() % (sizeof(s_greetings) / sizeof(s_greetings[0]))]);
+}
+
+// Small unprompted remarks for when the robot settles into a new idle
+// activity - not shown every time (see pick_idle_activity()), just often
+// enough that it doesn't feel scripted.
+static const char *const s_reading_phrases[] = { "hmm...", "good part!" };
+static const char *const s_working_phrases[] = { "busy...", "almost done" };
+static const char *const s_eating_phrases[] = { "yum!", "so good" };
+
+// Called by tick_handler roughly every 10-19s while nothing else is going
+// on (walking/weather/etc. all take priority in evaluate_state()). Picks a
+// time-of-day-appropriate activity - lunch hours favor eating, the rest of
+// the working day favors reading/working, otherwise it's a neutral idle -
+// and occasionally has the robot comment on it.
+static void pick_idle_activity(void) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  int hour = t->tm_hour;
+
+  RobotState pool[4];
+  int n = 0;
+  pool[n++] = ROBOT_IDLE;
+  pool[n++] = ROBOT_IDLE;
+  if (hour >= 12 && hour < 14) {
+    pool[n++] = ROBOT_EATING;
+  } else if (hour >= 9 && hour < 18) {
+    pool[n++] = ROBOT_READING;
+    pool[n++] = ROBOT_WORKING;
+  } else {
+    pool[n++] = ROBOT_READING;
+  }
+
+  RobotState next = pool[rand() % n];
+  if (next != s_state) {
+    s_state = next;
+    s_anim_phase = 0;
+    layer_mark_dirty(s_robot_layer);
+
+    if (rand() % 5 < 2) {
+      const char *phrase = NULL;
+      if (next == ROBOT_READING) {
+        phrase = s_reading_phrases[rand() % (sizeof(s_reading_phrases) / sizeof(s_reading_phrases[0]))];
+      } else if (next == ROBOT_WORKING) {
+        phrase = s_working_phrases[rand() % (sizeof(s_working_phrases) / sizeof(s_working_phrases[0]))];
+      } else if (next == ROBOT_EATING) {
+        phrase = s_eating_phrases[rand() % (sizeof(s_eating_phrases) / sizeof(s_eating_phrases[0]))];
+      }
+      if (phrase) show_speech_text(phrase);
+    }
+  }
+  s_idle_activity_countdown = 10 + rand() % 10;
 }
 
 // ---------------- TAP ----------------
