@@ -69,6 +69,12 @@ The robot now reacts to what you're doing, in priority order:
    sleepy-eyed late at night. These come from the weather condition string
    sent from your phone and the watch's own clock, so no extra setup is
    needed beyond the API key from step 1.
+6. **Idle activities** — otherwise, instead of standing still, the robot
+   randomly cycles through a few time-of-day activities every 10-19
+   seconds: reading a book or working at a laptop during the day, eating
+   around lunchtime (12:00-13:59), or just a plain idle pose the rest of
+   the time. It occasionally comments on what it's doing in a small speech
+   bubble.
 
 ## Shake to greet you
 
