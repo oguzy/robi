@@ -70,31 +70,19 @@ The robot now reacts to what you're doing, in priority order:
    sent from your phone and the watch's own clock, so no extra setup is
    needed beyond the API key from step 1.
 
-## Double-tap to greet you
+## Shake to greet you
 
-Quickly tap the watch twice (physically knock it, the way you'd already
-tap it once to wake the robot) and it reacts: a speech bubble pops up with
-a random greeting — "Hi!", "Hello!", or "Hoi!" — and it raises an arm in a
+Give the watch a firm shake and it reacts: a speech bubble pops up with a
+random greeting — "Hi!", "Hello!", or "Hoi!" — and it raises an arm in a
 wave, then settles back down after about 1.8 seconds.
 
 **Important:** Pebble watches don't have a touchscreen — Pebble Time 2 is
-buttons + accelerometer. "Double tap" here means physically tapping/
-knocking the watch case twice quickly, the same gesture the original Pip
-uses for its single-tap reactions. The HTML preview simulates this with a
-double-click on the screen since a browser has no equivalent gesture.
-
-**Tap firmly.** The accelerometer needs a distinct rap on the case (like
-knocking on a table), not a light finger tap - a soft tap can fall below
-its detection threshold and simply won't register.
-
-**Wake the screen first.** Pebble only reliably delivers a watchface's own
-accelerometer-tap events once the display is already awake/lit - a knock
-on a fully asleep screen usually won't reach the app at all (Pebble's
-motion-triggered backlight wake is a separate, system-level gesture - a
-deliberate wrist flick toward your face - not the same thing as an app's
-own tap detection). So: flick your wrist (or press a button) to wake the
-screen, *then* double-tap for the greeting. This is a Pebble platform
-characteristic, not something the app can override.
+buttons + accelerometer. On this hardware, the accelerometer's tap
+detector needs a wrist-shake-level hit to register at all — a normal
+finger tap/knock on the case doesn't reliably cross its threshold, so
+shake is the supported gesture rather than a tap or double-tap. The HTML
+preview simulates this with a double-click on the screen since a browser
+has no equivalent gesture.
 
 **Security note:** the weather key is entered through the phone app's
 Settings page and stored in the watchface's local storage on your phone —
