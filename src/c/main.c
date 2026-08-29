@@ -10,7 +10,6 @@
 #define VISOR_COLOR GColorFromHEX(0x0C1012)
 #define BG_COLOR GColorBlack
 #define TEXT_COLOR GColorWhite
-#define DOUBLE_TAP_WINDOW_MS 400
 #define SPEECH_DURATION_MS 1800
 
 enum {
@@ -63,8 +62,6 @@ static AppTimer *s_anim_timer = NULL;
 static int16_t s_last_z_avg = 0;
 static bool s_accel_streaming = false;
 
-static time_t s_last_tap_sec = 0;
-static uint16_t s_last_tap_ms = 0;
 static bool s_show_speech = false;
 static bool s_show_smile = false;
 static const char *s_speech_text = "Hi!";
@@ -686,41 +683,22 @@ static void bounce_reset_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
-// TEMP DIAGNOSTIC: isolates which branch of the double-tap window check
-// fires on real hardware, without relying on the backlight (e-paper stays
-// visible either way). Blue = else branch (lone/slow tap, resets the
-// window). Red = if branch (fast second tap, calls trigger_speech()).
-// Persisted (no timer) so it's checkable after the fact. Remove once the
-// double-tap-not-showing bug is understood.
+// The OS's built-in tap detector needs a wrist-shake-level hit to fire on
+// this hardware (a normal case-tap never registers - confirmed by testing).
+// Rather than chase tap sensitivity further, a shake is now the intended
+// gesture: any registered tap goes straight to the greeting, no double-tap
+// timing window.
 static void tap_handler(AccelAxisType axis, int32_t direction) {
   // The OS's own motion-wake gesture doesn't always catch a tap on the
   // case, which made the watch look unresponsive - force the backlight on
   // whenever the app itself sees a tap, so it's never relying on that.
   light_enable_interaction();
 
-  time_t now_sec;
-  uint16_t now_ms;
-  time_ms(&now_sec, &now_ms);
+  s_bounce = true;
+  layer_mark_dirty(s_robot_layer);
+  app_timer_register(350, bounce_reset_callback, NULL);
 
-  int32_t elapsed_ms = (int32_t)(now_sec - s_last_tap_sec) * 1000 +
-                        ((int32_t)now_ms - (int32_t)s_last_tap_ms);
-
-  if (elapsed_ms >= 0 && elapsed_ms < DOUBLE_TAP_WINDOW_MS) {
-    window_set_background_color(s_window, GColorRed);
-    trigger_speech();
-    s_last_tap_sec = 0;
-    s_last_tap_ms = 0;
-  } else {
-    window_set_background_color(s_window, GColorBlue);
-    s_last_tap_sec = now_sec;
-    s_last_tap_ms = now_ms;
-
-    s_bounce = true;
-    s_blink = true;
-    layer_mark_dirty(s_robot_layer);
-    app_timer_register(200, blink_timer_callback, NULL);
-    app_timer_register(350, bounce_reset_callback, NULL);
-  }
+  trigger_speech();
 }
 
 // ---------------- APPMESSAGE (weather) ----------------
