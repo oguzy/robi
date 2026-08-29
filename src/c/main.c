@@ -686,6 +686,12 @@ static void bounce_reset_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
+// TEMP DIAGNOSTIC: isolates which branch of the double-tap window check
+// fires on real hardware, without relying on the backlight (e-paper stays
+// visible either way). Blue = else branch (lone/slow tap, resets the
+// window). Red = if branch (fast second tap, calls trigger_speech()).
+// Persisted (no timer) so it's checkable after the fact. Remove once the
+// double-tap-not-showing bug is understood.
 static void tap_handler(AccelAxisType axis, int32_t direction) {
   // The OS's own motion-wake gesture doesn't always catch a tap on the
   // case, which made the watch look unresponsive - force the backlight on
@@ -700,10 +706,12 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
                         ((int32_t)now_ms - (int32_t)s_last_tap_ms);
 
   if (elapsed_ms >= 0 && elapsed_ms < DOUBLE_TAP_WINDOW_MS) {
+    window_set_background_color(s_window, GColorRed);
     trigger_speech();
     s_last_tap_sec = 0;
     s_last_tap_ms = 0;
   } else {
+    window_set_background_color(s_window, GColorBlue);
     s_last_tap_sec = now_sec;
     s_last_tap_ms = now_ms;
 
