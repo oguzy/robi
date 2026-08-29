@@ -1,5 +1,4 @@
 #include <pebble.h>
-#include <math.h>
 
 // ---------- CONFIG ----------
 #define STEP_GOAL 10000
@@ -13,17 +12,6 @@
 #define TEXT_COLOR GColorWhite
 #define DOUBLE_TAP_WINDOW_MS 400
 #define SPEECH_DURATION_MS 1800
-
-// The watch's built-in accelerometer tap-interrupt (accel_tap_service) turned
-// out to require a much harder hit than a normal case-tap on this hardware -
-// a wrist shake registers, a finger tap doesn't. So taps are detected here
-// instead, from raw accelerometer samples: a tap is a brief spike in the
-// acceleration vector's magnitude away from the resting ~1000 (1G, mostly
-// gravity). ACCEL_TAP_THRESHOLD is a starting guess and needs tuning against
-// real readings - see the peak-magnitude debug readout in window_load().
-#define ACCEL_TAP_THRESHOLD 500
-#define ACCEL_TAP_SAMPLES_PER_UPDATE 2
-#define ACCEL_TAP_REFRACTORY_SAMPLES 8
 
 enum {
   KEY_TEMPERATURE = 0,
@@ -73,7 +61,7 @@ static bool s_goal_celebrated_today = false;
 static AppTimer *s_anim_timer = NULL;
 
 static int16_t s_last_z_avg = 0;
-static int16_t s_latest_accel_z = 0;
+static bool s_accel_streaming = false;
 
 static time_t s_last_tap_sec = 0;
 static uint16_t s_last_tap_ms = 0;
@@ -81,15 +69,6 @@ static bool s_show_speech = false;
 static bool s_show_smile = false;
 static const char *s_speech_text = "Hi!";
 static AppTimer *s_speech_timer = NULL;
-
-static int s_tap_cooldown = 0;
-
-// TEMP DIAGNOSTIC: largest tap-magnitude spike seen since launch, shown on
-// screen via s_debug_layer so ACCEL_TAP_THRESHOLD can be tuned from a real
-// device reading instead of guessing. Remove once the threshold is settled.
-static int32_t s_debug_peak_delta = 0;
-static char s_debug_buffer[24] = "pk: --";
-static TextLayer *s_debug_layer;
 
 // ---------------- HELPERS ----------------
 static bool is_night(void) {
@@ -104,11 +83,10 @@ static bool is_special_time(void) {
   return (t->tm_hour % 12 == 11 && t->tm_min == 11);
 }
 
-// Fed by accel_raw_handler() rather than accel_service_peek() - peek errors
-// out once a real data handler is subscribed, which accel_raw_handler now is
-// for the whole app lifetime (it doubles as the tap detector).
 static bool sample_stairs_direction(int *direction_out) {
-  int16_t z_avg = s_latest_accel_z;
+  AccelData data;
+  if (accel_service_peek(&data) != 0) return false;
+  int16_t z_avg = data.z;
   int16_t delta = z_avg - s_last_z_avg;
   s_last_z_avg = z_avg;
   if (delta > 150) { *direction_out = 1; return true; }
@@ -131,10 +109,23 @@ static void evaluate_state(void) {
 
   HealthActivityMask activities = health_service_peek_current_activities();
 
-  // Raw accelerometer streaming now runs for the app's whole lifetime (see
-  // accel_raw_handler / init()) since it doubles as our own tap detector.
-  // sample_stairs_direction() below just peeks the latest sample, which
-  // works as long as some subscription is active.
+  // Raw accelerometer streaming (needed only for the stairs-direction
+  // heuristic below) is subscribed just-in-time and dropped the rest of the
+  // time. Keeping it running continuously fights the accelerometer's
+  // low-power tap-interrupt mode, which is what both the watch's own
+  // tap-to-wake gesture and our double-tap greeting rely on - with it
+  // subscribed all the time, taps stopped registering once the screen went
+  // to sleep.
+  bool want_accel_streaming = (activities & HealthActivityWalk) != 0;
+  if (want_accel_streaming != s_accel_streaming) {
+    if (want_accel_streaming) {
+      accel_data_service_subscribe(0, NULL);
+    } else {
+      accel_data_service_unsubscribe();
+    }
+    s_accel_streaming = want_accel_streaming;
+  }
+
   if (activities & HealthActivityRun) { s_state = ROBOT_RUNNING; return; }
 
   if (activities & HealthActivityWalk) {
@@ -701,7 +692,7 @@ static void bounce_reset_callback(void *data) {
 // window). Red = if branch (fast second tap, calls trigger_speech()).
 // Persisted (no timer) so it's checkable after the fact. Remove once the
 // double-tap-not-showing bug is understood.
-static void handle_tap_event(void) {
+static void tap_handler(AccelAxisType axis, int32_t direction) {
   // The OS's own motion-wake gesture doesn't always catch a tap on the
   // case, which made the watch look unresponsive - force the backlight on
   // whenever the app itself sees a tap, so it's never relying on that.
@@ -729,41 +720,6 @@ static void handle_tap_event(void) {
     layer_mark_dirty(s_robot_layer);
     app_timer_register(200, blink_timer_callback, NULL);
     app_timer_register(350, bounce_reset_callback, NULL);
-  }
-}
-
-// Our own tap detector, replacing accel_tap_service (its built-in threshold
-// needed a wrist-shake-level hit to fire, not a normal case-tap - see
-// CLAUDE.md). Runs continuously off the raw accelerometer stream: a tap
-// shows up as a brief spike in the acceleration magnitude away from the
-// resting ~1000 (1G). ACCEL_TAP_REFRACTORY_SAMPLES debounces a single
-// physical knock's ringing so it doesn't fire multiple times.
-static void accel_raw_handler(AccelData *data, uint32_t num_samples) {
-  for (uint32_t i = 0; i < num_samples; i++) {
-    if (data[i].did_vibrate) continue;
-
-    s_latest_accel_z = data[i].z;
-
-    float magnitude = sqrtf((float)data[i].x * data[i].x +
-                             (float)data[i].y * data[i].y +
-                             (float)data[i].z * data[i].z);
-    int32_t delta = (int32_t)fabsf(magnitude - 1000.0f);
-
-    if (delta > s_debug_peak_delta) {
-      s_debug_peak_delta = delta;
-      snprintf(s_debug_buffer, sizeof(s_debug_buffer), "pk: %ld", (long)s_debug_peak_delta);
-      text_layer_set_text(s_debug_layer, s_debug_buffer);
-    }
-
-    if (s_tap_cooldown > 0) {
-      s_tap_cooldown--;
-      continue;
-    }
-
-    if (delta > ACCEL_TAP_THRESHOLD) {
-      s_tap_cooldown = ACCEL_TAP_REFRACTORY_SAMPLES;
-      handle_tap_event();
-    }
   }
 }
 
@@ -849,17 +805,6 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_date_layer));
 
-  // TEMP DIAGNOSTIC: shows the largest tap-magnitude spike seen since
-  // launch, so ACCEL_TAP_THRESHOLD can be tuned from a real reading. Added
-  // last so it draws on top of the robot layer. Remove once tuned.
-  s_debug_layer = text_layer_create(GRect(0, 0, bounds.size.w, 14));
-  text_layer_set_background_color(s_debug_layer, GColorBlack);
-  text_layer_set_text_color(s_debug_layer, GColorWhite);
-  text_layer_set_font(s_debug_layer, s_speech_font);
-  text_layer_set_text_alignment(s_debug_layer, GTextAlignmentLeft);
-  text_layer_set_text(s_debug_layer, s_debug_buffer);
-  layer_add_child(window_layer, text_layer_get_layer(s_debug_layer));
-
   time_t now = time(NULL);
   struct tm *tick_time = localtime(&now);
   update_time(tick_time);
@@ -877,7 +822,6 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_date_layer);
   text_layer_destroy(s_steps_layer);
   text_layer_destroy(s_weather_layer);
-  text_layer_destroy(s_debug_layer);
 }
 
 // ---------------- INIT ----------------
@@ -893,7 +837,7 @@ static void init(void) {
 
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
   health_service_events_subscribe(health_handler, NULL);
-  accel_data_service_subscribe(ACCEL_TAP_SAMPLES_PER_UPDATE, accel_raw_handler);
+  accel_tap_service_subscribe(tap_handler);
 
   app_message_register_inbox_received(inbox_received_handler);
   app_message_register_inbox_dropped(inbox_dropped_callback);
@@ -905,7 +849,8 @@ static void init(void) {
 static void deinit(void) {
   tick_timer_service_unsubscribe();
   health_service_events_unsubscribe();
-  accel_data_service_unsubscribe();
+  accel_tap_service_unsubscribe();
+  if (s_accel_streaming) accel_data_service_unsubscribe();
   window_destroy(s_window);
 }
 
