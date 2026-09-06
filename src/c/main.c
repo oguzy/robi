@@ -2,6 +2,7 @@
 
 // ---------- CONFIG ----------
 #define STEP_GOAL 10000
+#define HEART_RATE_HIGH 120  // bpm - heart icon/number turn red at or above this
 #define ACCENT_COLOR GColorFromHEX(0x55EFEF)
 #define ACCENT_DIM GColorFromHEX(0x2F8F8F)
 #define BODY_LIGHT GColorFromHEX(0x8A9096)
@@ -42,10 +43,9 @@ static void pick_idle_activity(void);
 static Window *s_window;
 static Layer *s_robot_layer;
 static TextLayer *s_time_layer;
-static TextLayer *s_day_layer;
 static TextLayer *s_date_layer;
 static Layer *s_steps_layer;
-static TextLayer *s_weather_layer;
+static Layer *s_weather_layer;
 
 static GFont s_time_font;
 static GFont s_small_font;
@@ -53,12 +53,13 @@ static GFont s_speech_font;
 static GFont s_steps_font;
 
 static char s_time_buffer[8];
-static char s_day_buffer[12];
-static char s_date_buffer[12];
+static char s_date_buffer[24];
 static char s_steps_buffer[32];
 static char s_weather_buffer[16] = "--\xC2\xB0";
+static char s_heart_buffer[12] = "--";
 static char s_conditions[16] = "";
 static int s_steps_count = 0;
+static int s_heart_rate = 0;
 
 static bool s_blink = false;
 static bool s_bounce = false;
@@ -741,10 +742,7 @@ static void update_time(struct tm *tick_time) {
             clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
   text_layer_set_text(s_time_layer, s_time_buffer);
 
-  strftime(s_day_buffer, sizeof(s_day_buffer), "%A", tick_time);
-  text_layer_set_text(s_day_layer, s_day_buffer);
-
-  strftime(s_date_buffer, sizeof(s_date_buffer), "%b %d", tick_time);
+  strftime(s_date_buffer, sizeof(s_date_buffer), "%a, %b %d", tick_time);
   text_layer_set_text(s_date_layer, s_date_buffer);
 
   if (tick_time->tm_hour == 0 && tick_time->tm_min == 0) {
@@ -806,10 +804,83 @@ static void update_steps(void) {
   evaluate_state();
 }
 
+// ---------------- HEART RATE ----------------
+static void update_heart_rate(void) {
+  HealthValue bpm = health_service_peek_current_value(HealthMetricHeartRateBPM);
+  s_heart_rate = (int)bpm;
+
+  if (s_heart_rate > 0) {
+    snprintf(s_heart_buffer, sizeof(s_heart_buffer), "%d", s_heart_rate);
+  } else {
+    snprintf(s_heart_buffer, sizeof(s_heart_buffer), "--");
+  }
+  layer_mark_dirty(s_weather_layer);
+}
+
 static void health_handler(HealthEventType event, void *context) {
   if (event == HealthEventSignificantUpdate || event == HealthEventMovementUpdate) {
     update_steps();
   }
+  if (event == HealthEventHeartRateUpdate) {
+    update_heart_rate();
+  }
+}
+
+// Small pixel heart: two round lobes plus a filled triangle for the point.
+static void draw_heart(GContext *ctx, GPoint center, int size, GColor color) {
+  graphics_context_set_fill_color(ctx, color);
+  int r = size / 3;
+  graphics_fill_circle(ctx, GPoint(center.x - r, center.y - r / 2), r + 1);
+  graphics_fill_circle(ctx, GPoint(center.x + r, center.y - r / 2), r + 1);
+
+  GPoint tri[3] = {
+    GPoint(center.x - size / 2, center.y - size / 10),
+    GPoint(center.x + size / 2, center.y - size / 10),
+    GPoint(center.x, center.y + size / 2)
+  };
+  GPathInfo info = { .num_points = 3, .points = tri };
+  GPath *path = gpath_create(&info);
+  gpath_draw_filled(ctx, path);
+  gpath_destroy(path);
+}
+
+// Weather temperature + persistent heart-rate readout, sharing one row.
+// Heart-rate: green normally, red at/above HEART_RATE_HIGH, dim gray "--"
+// when no reading is available yet (e.g. watch not snug, or emulator with
+// no HRM sensor).
+static void weather_layer_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  int mid_y = bounds.origin.y + bounds.size.h / 2;
+
+  GSize temp_size = graphics_text_layout_get_content_size(
+      s_weather_buffer, s_small_font, GRect(0, 0, bounds.size.w, bounds.size.h),
+      GTextOverflowModeFill, GTextAlignmentLeft);
+  GSize heart_num_size = graphics_text_layout_get_content_size(
+      s_heart_buffer, s_steps_font, GRect(0, 0, bounds.size.w, bounds.size.h),
+      GTextOverflowModeFill, GTextAlignmentLeft);
+
+  int heart_size = 14;
+  int gap = 8;
+  int total_w = temp_size.w + gap + heart_size + 6 + heart_num_size.w;
+  int start_x = bounds.origin.x + (bounds.size.w - total_w) / 2;
+
+  GRect temp_rect = GRect(start_x, bounds.origin.y, temp_size.w, bounds.size.h);
+  graphics_context_set_text_color(ctx, ACCENT_COLOR);
+  graphics_draw_text(ctx, s_weather_buffer, s_small_font, temp_rect,
+                      GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+
+  GColor heart_color = ACCENT_DIM;
+  if (s_heart_rate > 0) {
+    heart_color = (s_heart_rate >= HEART_RATE_HIGH) ? GColorRed : GColorGreen;
+  }
+  GPoint heart_center = GPoint(start_x + temp_size.w + gap + heart_size / 2, mid_y);
+  draw_heart(ctx, heart_center, heart_size, heart_color);
+
+  GRect num_rect = GRect(heart_center.x + heart_size / 2 + 6, bounds.origin.y,
+                          heart_num_size.w, bounds.size.h);
+  graphics_context_set_text_color(ctx, heart_color);
+  graphics_draw_text(ctx, s_heart_buffer, s_steps_font, num_rect,
+                      GTextOverflowModeFill, GTextAlignmentLeft, NULL);
 }
 
 // ---------------- BLINK / SMILE ----------------
@@ -999,7 +1070,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   if (temp_tuple) {
     snprintf(s_weather_buffer, sizeof(s_weather_buffer), "%d\xC2\xB0",
              (int)temp_tuple->value->int32);
-    text_layer_set_text(s_weather_layer, s_weather_buffer);
+    layer_mark_dirty(s_weather_layer);
   }
   if (cond_tuple) {
     strncpy(s_conditions, cond_tuple->value->cstring, sizeof(s_conditions) - 1);
@@ -1029,7 +1100,7 @@ static void window_load(Window *window) {
   s_time_font = fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS);
   s_small_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
   s_speech_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
-  s_steps_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+  s_steps_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
 
   s_robot_layer = layer_create(GRect(0, 4, bounds.size.w, 76));
   layer_set_update_proc(s_robot_layer, robot_layer_update_proc);
@@ -1042,26 +1113,18 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
-  s_steps_layer = layer_create(GRect(0, 128, bounds.size.w, 25));
+  // Steps, weather+heart, and the combined day/date line share the
+  // remaining 100px below the time - day and date used to be separate
+  // rows, freeing space for the heart-rate readout added alongside weather.
+  s_steps_layer = layer_create(GRect(0, 128, bounds.size.w, 28));
   layer_set_update_proc(s_steps_layer, steps_layer_update_proc);
   layer_add_child(window_layer, s_steps_layer);
 
-  s_weather_layer = text_layer_create(GRect(0, 153, bounds.size.w, 25));
-  text_layer_set_background_color(s_weather_layer, GColorClear);
-  text_layer_set_text_color(s_weather_layer, ACCENT_COLOR);
-  text_layer_set_font(s_weather_layer, s_small_font);
-  text_layer_set_text_alignment(s_weather_layer, GTextAlignmentCenter);
-  text_layer_set_text(s_weather_layer, s_weather_buffer);
-  layer_add_child(window_layer, text_layer_get_layer(s_weather_layer));
+  s_weather_layer = layer_create(GRect(0, 157, bounds.size.w, 34));
+  layer_set_update_proc(s_weather_layer, weather_layer_update_proc);
+  layer_add_child(window_layer, s_weather_layer);
 
-  s_day_layer = text_layer_create(GRect(0, bounds.size.h - 50, bounds.size.w, 25));
-  text_layer_set_background_color(s_day_layer, GColorClear);
-  text_layer_set_text_color(s_day_layer, GColorLightGray);
-  text_layer_set_font(s_day_layer, s_small_font);
-  text_layer_set_text_alignment(s_day_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_day_layer));
-
-  s_date_layer = text_layer_create(GRect(0, bounds.size.h - 25, bounds.size.w, 25));
+  s_date_layer = text_layer_create(GRect(0, 194, bounds.size.w, 28));
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_text_color(s_date_layer, GColorLightGray);
   text_layer_set_font(s_date_layer, s_small_font);
@@ -1072,6 +1135,7 @@ static void window_load(Window *window) {
   struct tm *tick_time = localtime(&now);
   update_time(tick_time);
   update_steps();
+  update_heart_rate();
 
   s_anim_timer = app_timer_register(600, anim_timer_callback, NULL);
 }
@@ -1081,10 +1145,9 @@ static void window_unload(Window *window) {
   if (s_speech_timer) app_timer_cancel(s_speech_timer);
   layer_destroy(s_robot_layer);
   text_layer_destroy(s_time_layer);
-  text_layer_destroy(s_day_layer);
   text_layer_destroy(s_date_layer);
   layer_destroy(s_steps_layer);
-  text_layer_destroy(s_weather_layer);
+  layer_destroy(s_weather_layer);
 }
 
 // ---------------- INIT ----------------
@@ -1100,6 +1163,7 @@ static void init(void) {
 
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
   health_service_events_subscribe(health_handler, NULL);
+  health_service_set_heart_rate_sample_period(60);
   accel_tap_service_subscribe(tap_handler);
 
   app_message_register_inbox_received(inbox_received_handler);
