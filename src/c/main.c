@@ -12,28 +12,28 @@
 #define TEXT_COLOR GColorWhite
 #define SPEECH_DURATION_MS 1800
 
-enum {
-  KEY_TEMPERATURE = 0,
-  KEY_CONDITIONS = 1,
-  KEY_WEATHER_ICON = 2,
-  KEY_REQUEST_WEATHER = 3
-};
-
 typedef enum {
   ROBOT_IDLE,
   ROBOT_READING,
   ROBOT_WORKING,
   ROBOT_EATING,
+  ROBOT_CYCLING,
+  ROBOT_AWAY,
   ROBOT_WALKING,
   ROBOT_RUNNING,
-  ROBOT_STAIRS_UP,
-  ROBOT_STAIRS_DOWN,
   ROBOT_GOAL_REACHED,
   ROBOT_WEATHER_SUN,
   ROBOT_WEATHER_RAIN,
   ROBOT_WEATHER_COLD,
   ROBOT_SLEEPY
 } RobotState;
+
+// ROBOT_AWAY plays out as a scripted sub-timeline keyed off s_anim_phase:
+// walk off-screen, vanish entirely for a bit, walk back in. Phase units are
+// anim_timer_callback ticks (100ms while animating).
+#define AWAY_GONE_AT 15
+#define AWAY_RETURN_AT 40
+#define AWAY_DONE_AT 55
 
 // pick_idle_activity() (defined below, near trigger_speech) is called from
 // tick_handler, which comes earlier in the file than its definition.
@@ -44,12 +44,13 @@ static Layer *s_robot_layer;
 static TextLayer *s_time_layer;
 static TextLayer *s_day_layer;
 static TextLayer *s_date_layer;
-static TextLayer *s_steps_layer;
+static Layer *s_steps_layer;
 static TextLayer *s_weather_layer;
 
 static GFont s_time_font;
 static GFont s_small_font;
 static GFont s_speech_font;
+static GFont s_steps_font;
 
 static char s_time_buffer[8];
 static char s_day_buffer[12];
@@ -57,6 +58,7 @@ static char s_date_buffer[12];
 static char s_steps_buffer[32];
 static char s_weather_buffer[16] = "--\xC2\xB0";
 static char s_conditions[16] = "";
+static int s_steps_count = 0;
 
 static bool s_blink = false;
 static bool s_bounce = false;
@@ -67,8 +69,11 @@ static bool s_goal_celebrated_today = false;
 static AppTimer *s_anim_timer = NULL;
 static int s_idle_activity_countdown = 0;
 
-static int16_t s_last_z_avg = 0;
-static bool s_accel_streaming = false;
+// Idle wander: the robot drifts sideways to a new random spot every time
+// pick_idle_activity() rerolls, easing there a couple px per animation
+// frame rather than jumping.
+static int s_robot_x_offset = 0;
+static int s_wander_target = 0;
 
 static bool s_show_speech = false;
 static bool s_show_smile = false;
@@ -91,18 +96,8 @@ static bool is_special_time(void) {
 // The "nothing else going on" states, cycled through randomly by
 // pick_idle_activity() instead of just standing still.
 static bool is_idle_family(RobotState s) {
-  return s == ROBOT_IDLE || s == ROBOT_READING || s == ROBOT_WORKING || s == ROBOT_EATING;
-}
-
-static bool sample_stairs_direction(int *direction_out) {
-  AccelData data;
-  if (accel_service_peek(&data) != 0) return false;
-  int16_t z_avg = data.z;
-  int16_t delta = z_avg - s_last_z_avg;
-  s_last_z_avg = z_avg;
-  if (delta > 150) { *direction_out = 1; return true; }
-  if (delta < -150) { *direction_out = -1; return true; }
-  return false;
+  return s == ROBOT_IDLE || s == ROBOT_READING || s == ROBOT_WORKING ||
+         s == ROBOT_EATING || s == ROBOT_CYCLING || s == ROBOT_AWAY;
 }
 
 // ---------------- STATE EVALUATION ----------------
@@ -120,32 +115,10 @@ static void evaluate_state(void) {
 
   HealthActivityMask activities = health_service_peek_current_activities();
 
-  // Raw accelerometer streaming (needed only for the stairs-direction
-  // heuristic below) is subscribed just-in-time and dropped the rest of the
-  // time. Keeping it running continuously fights the accelerometer's
-  // low-power tap-interrupt mode, which is what the watch's own tap-to-wake
-  // gesture and our own shake-to-greet detection both rely on - with it
-  // subscribed all the time, taps/shakes stopped registering once the
-  // screen went to sleep.
-  bool want_accel_streaming = (activities & HealthActivityWalk) != 0;
-  if (want_accel_streaming != s_accel_streaming) {
-    if (want_accel_streaming) {
-      accel_data_service_subscribe(0, NULL);
-    } else {
-      accel_data_service_unsubscribe();
-    }
-    s_accel_streaming = want_accel_streaming;
-  }
-
   if (activities & HealthActivityRun) { s_state = ROBOT_RUNNING; return; }
 
   if (activities & HealthActivityWalk) {
-    int dir = 0;
-    if (sample_stairs_direction(&dir)) {
-      s_state = (dir > 0) ? ROBOT_STAIRS_UP : ROBOT_STAIRS_DOWN;
-    } else {
-      s_state = ROBOT_WALKING;
-    }
+    s_state = ROBOT_WALKING;
     return;
   }
 
@@ -172,6 +145,10 @@ static void evaluate_state(void) {
 // ---------------- ANIMATION TICK ----------------
 static void anim_timer_callback(void *data) {
   s_anim_phase++;
+
+  if (s_robot_x_offset < s_wander_target) s_robot_x_offset += 2;
+  else if (s_robot_x_offset > s_wander_target) s_robot_x_offset -= 2;
+
   layer_mark_dirty(s_robot_layer);
 
   if (s_state == ROBOT_GOAL_REACHED && s_anim_phase > 20) {
@@ -180,11 +157,19 @@ static void anim_timer_callback(void *data) {
     s_idle_activity_countdown = 0;
   }
 
+  if (s_state == ROBOT_AWAY && s_anim_phase > AWAY_DONE_AT + 20) {
+    // Scripted sequence finished a while ago and nothing rerolled it yet
+    // (idle_activity_countdown can outlast the ~5.5s script) - just settle
+    // into a plain idle look rather than sitting on a stale AWAY state.
+    s_robot_x_offset = 0;
+  }
+
   bool needs_smooth_anim =
       (s_state == ROBOT_WALKING || s_state == ROBOT_RUNNING ||
-       s_state == ROBOT_STAIRS_UP || s_state == ROBOT_STAIRS_DOWN ||
+       s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
        s_state == ROBOT_GOAL_REACHED || s_state == ROBOT_WEATHER_RAIN ||
-       s_state == ROBOT_WEATHER_COLD || s_show_speech);
+       s_state == ROBOT_WEATHER_COLD || s_show_speech ||
+       s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
                                      anim_timer_callback, NULL);
@@ -213,30 +198,6 @@ static void draw_road(GContext *ctx, GRect bounds, int speed) {
   for (int x = -scroll; x < bounds.size.w; x += (dash_w + gap)) {
     GRect dash = GRect(bounds.origin.x + x, road_y + 2, dash_w, 2);
     graphics_fill_rect(ctx, dash, 0, GCornerNone);
-  }
-}
-
-// Staircase for stairs up/down: rather than sliding the whole robot across
-// a fixed flight of steps (which looked like a snap-reset once it ran out
-// of room), the robot stays put and a diagonal "treadmill" of scrolling
-// stripes moves behind it - same trick as the scrolling road, just on a
-// diagonal. Reads clearly as climbing/descending and loops seamlessly
-// forever with no jump.
-static void draw_stairs_scroll_background(GContext *ctx, GRect bounds, bool going_up) {
-  int spacing = 18;
-  int raw = s_anim_phase * (going_up ? 4 : -4);
-  int offset = raw % spacing;
-  if (offset < 0) offset += spacing;
-
-  int span = bounds.size.w + bounds.size.h + spacing * 2;
-
-  graphics_context_set_stroke_width(ctx, 5);
-  for (int k = -2; k * spacing < span; k++) {
-    int d = k * spacing - offset;
-    graphics_context_set_stroke_color(ctx, (k % 3 == 0) ? ACCENT_COLOR : GColorDarkGray);
-    GPoint p1 = GPoint(bounds.origin.x + d, bounds.origin.y - 6);
-    GPoint p2 = GPoint(bounds.origin.x + d - bounds.size.h - 12, bounds.origin.y + bounds.size.h + 6);
-    graphics_draw_line(ctx, p1, p2);
   }
 }
 
@@ -345,28 +306,75 @@ static void draw_confetti(GContext *ctx, GRect head) {
   }
 }
 
-static void draw_rain(GContext *ctx, GRect head) {
-  graphics_context_set_stroke_color(ctx, GColorVividCerulean);
-  for (int i = 0; i < 3; i++) {
-    int x = head.origin.x + 14 + i * 20;
-    int y = head.origin.y - 10 + ((s_anim_phase * 4 + i * 6) % 14);
-    graphics_draw_line(ctx, GPoint(x, y), GPoint(x - 2, y + 6));
-  }
+// Persistent weather badge, top-right of the robot layer - always reflects
+// s_conditions regardless of what the robot itself is doing, rather than
+// only appearing when the robot happens to be idle in a matching weather
+// reaction state.
+static void draw_cloud_shape(GContext *ctx, GPoint c, GColor color) {
+  graphics_context_set_fill_color(ctx, color);
+  graphics_fill_circle(ctx, GPoint(c.x - 4, c.y + 1), 4);
+  graphics_fill_circle(ctx, GPoint(c.x + 2, c.y - 2), 5);
+  graphics_fill_circle(ctx, GPoint(c.x + 6, c.y + 1), 4);
+  graphics_fill_rect(ctx, GRect(c.x - 8, c.y, 16, 5), 2, GCornersAll);
 }
 
-static void draw_sun(GContext *ctx, GRect head) {
-  GPoint c = GPoint(head.origin.x + head.size.w - 8, head.origin.y - 4);
-  graphics_context_set_fill_color(ctx, GColorYellow);
-  graphics_fill_circle(ctx, c, 5);
-  graphics_context_set_stroke_color(ctx, GColorYellow);
-  for (int i = 0; i < 6; i++) {
-    int32_t angle = (TRIG_MAX_ANGLE / 6) * i;
-    GPoint p1 = GPoint(c.x + sin_lookup(angle) * 8 / TRIG_MAX_RATIO,
-                        c.y - cos_lookup(angle) * 8 / TRIG_MAX_RATIO);
-    GPoint p2 = GPoint(c.x + sin_lookup(angle) * 11 / TRIG_MAX_RATIO,
-                        c.y - cos_lookup(angle) * 11 / TRIG_MAX_RATIO);
-    graphics_draw_line(ctx, p1, p2);
+static void draw_weather_icon(GContext *ctx, GRect bounds) {
+  if (s_conditions[0] == '\0') return;  // no weather data yet
+
+  GPoint c = GPoint(bounds.origin.x + bounds.size.w - 14, bounds.origin.y + 13);
+
+  if (strcmp(s_conditions, "Clear") == 0) {
+    graphics_context_set_fill_color(ctx, GColorYellow);
+    graphics_fill_circle(ctx, c, 5);
+    graphics_context_set_stroke_color(ctx, GColorYellow);
+    for (int i = 0; i < 8; i++) {
+      int32_t angle = (TRIG_MAX_ANGLE / 8) * i;
+      GPoint p1 = GPoint(c.x + sin_lookup(angle) * 7 / TRIG_MAX_RATIO,
+                          c.y - cos_lookup(angle) * 7 / TRIG_MAX_RATIO);
+      GPoint p2 = GPoint(c.x + sin_lookup(angle) * 10 / TRIG_MAX_RATIO,
+                          c.y - cos_lookup(angle) * 10 / TRIG_MAX_RATIO);
+      graphics_draw_line(ctx, p1, p2);
+    }
+  } else if (strcmp(s_conditions, "Cloudy") == 0) {
+    draw_cloud_shape(ctx, c, GColorLightGray);
+  } else if (strcmp(s_conditions, "Fog") == 0) {
+    graphics_context_set_stroke_color(ctx, GColorLightGray);
+    graphics_context_set_stroke_width(ctx, 1);
+    for (int i = 0; i < 3; i++) {
+      int y = c.y - 5 + i * 5;
+      graphics_draw_line(ctx, GPoint(c.x - 9, y), GPoint(c.x + 9, y));
+    }
+  } else if (strcmp(s_conditions, "Rain") == 0 || strcmp(s_conditions, "Drizzle") == 0 ||
+             strcmp(s_conditions, "Fz. Rain") == 0 || strcmp(s_conditions, "Fz. Drizzle") == 0 ||
+             strcmp(s_conditions, "Showers") == 0) {
+    draw_cloud_shape(ctx, GPoint(c.x, c.y - 2), GColorLightGray);
+    graphics_context_set_stroke_color(ctx, GColorVividCerulean);
+    for (int i = 0; i < 3; i++) {
+      int x = c.x - 6 + i * 6;
+      int y = c.y + 3 + ((s_anim_phase * 3 + i * 5) % 6);
+      graphics_draw_line(ctx, GPoint(x, y), GPoint(x - 2, y + 5));
+    }
+  } else if (strcmp(s_conditions, "Snow") == 0 || strcmp(s_conditions, "Snow Grains") == 0 ||
+             strcmp(s_conditions, "Snow Shwrs") == 0) {
+    draw_cloud_shape(ctx, GPoint(c.x, c.y - 2), GColorLightGray);
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    for (int i = 0; i < 3; i++) {
+      int x = c.x - 6 + i * 6;
+      int y = c.y + 4 + ((i + s_anim_phase / 3) % 2) * 3;
+      graphics_fill_circle(ctx, GPoint(x, y), 2);
+    }
+  } else if (strcmp(s_conditions, "T-Storm") == 0) {
+    draw_cloud_shape(ctx, GPoint(c.x, c.y - 2), GColorDarkGray);
+    GPoint bolt[3] = {
+      GPoint(c.x + 2, c.y + 3), GPoint(c.x - 2, c.y + 8), GPoint(c.x + 1, c.y + 8)
+    };
+    graphics_context_set_stroke_color(ctx, GColorChromeYellow);
+    graphics_context_set_stroke_width(ctx, 1);
+    graphics_draw_line(ctx, bolt[0], bolt[1]);
+    graphics_draw_line(ctx, bolt[1], bolt[2]);
+    graphics_draw_line(ctx, bolt[2], GPoint(c.x - 3, c.y + 13));
   }
+  // "Unknown" or anything else: no icon.
 }
 
 // An open book held in front of the torso, for ROBOT_READING.
@@ -421,6 +429,32 @@ static void draw_snack(GContext *ctx, GRect head) {
   graphics_fill_circle(ctx, GPoint(fx - 1, fy - 1), 1);
   graphics_context_set_fill_color(ctx, BG_COLOR);
   graphics_fill_circle(ctx, GPoint(fx + 2, fy + 1), 2);
+}
+
+// Simple bicycle frame + wheels beneath the robot, for ROBOT_CYCLING.
+static void draw_bicycle(GContext *ctx, GRect torso, GRect bounds) {
+  int ground_y = bounds.origin.y + bounds.size.h - 8;
+  int cx = torso.origin.x + torso.size.w / 2;
+  int wheel_r = 7;
+  GPoint left_wheel = GPoint(cx - 14, ground_y - wheel_r);
+  GPoint right_wheel = GPoint(cx + 14, ground_y - wheel_r);
+  GPoint seat = GPoint(cx, torso.origin.y + torso.size.h);
+
+  graphics_context_set_stroke_color(ctx, BODY_MID);
+  graphics_context_set_stroke_width(ctx, 2);
+  graphics_draw_line(ctx, left_wheel, seat);
+  graphics_draw_line(ctx, right_wheel, seat);
+  graphics_draw_line(ctx, left_wheel, right_wheel);
+
+  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_circle(ctx, left_wheel, wheel_r);
+  graphics_draw_circle(ctx, right_wheel, wheel_r);
+  // spinning-spoke hint so the wheels don't look static
+  int32_t spin = (s_anim_phase * (TRIG_MAX_ANGLE / 8)) % TRIG_MAX_ANGLE;
+  GPoint spoke_end = GPoint(right_wheel.x + sin_lookup(spin) * wheel_r / TRIG_MAX_RATIO,
+                             right_wheel.y - cos_lookup(spin) * wheel_r / TRIG_MAX_RATIO);
+  graphics_draw_line(ctx, right_wheel, spoke_end);
 }
 
 static void draw_speech_bubble(GContext *ctx, GRect head, GRect bounds, const char *text) {
@@ -486,7 +520,15 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     return;
   }
 
-  int bob = 0, tilt = 0, top_shift = 0;
+  // Mid-way through ROBOT_AWAY the robot has walked fully off one edge and
+  // hasn't walked back in yet - draw nothing at all for this stretch so it
+  // genuinely looks like it's gone, rather than just off in a corner.
+  if (s_state == ROBOT_AWAY && s_anim_phase >= AWAY_GONE_AT && s_anim_phase < AWAY_RETURN_AT) {
+    draw_weather_icon(ctx, bounds);
+    return;
+  }
+
+  int bob = 0, tilt = 0, top_shift = 0, x_offset = 0;
   int arm_swing = 0, leg_swing = 0;
 
   switch (s_state) {
@@ -507,20 +549,40 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       leg_swing = swing * 2 / 3;
       break;
     }
-    case ROBOT_STAIRS_UP: {
-      draw_stairs_scroll_background(ctx, bounds, true);
-      tilt = 3;
-      top_shift = -(abs(sine_wave(2, TRIG_MAX_ANGLE / 10)));
-      leg_swing = sine_wave(3, TRIG_MAX_ANGLE / 10);
-      arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 10);
+    case ROBOT_CYCLING: {
+      draw_road(ctx, bounds, 3);
+      int pedal = sine_wave(5, TRIG_MAX_ANGLE / 8);
+      bob = -(abs(pedal) / 3);
+      leg_swing = pedal;
+      arm_swing = pedal / 4;
+      x_offset = s_robot_x_offset;
       break;
     }
-    case ROBOT_STAIRS_DOWN: {
-      draw_stairs_scroll_background(ctx, bounds, false);
-      tilt = -3;
-      top_shift = -(abs(sine_wave(2, TRIG_MAX_ANGLE / 10)));
-      leg_swing = sine_wave(3, TRIG_MAX_ANGLE / 10);
-      arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 10);
+    case ROBOT_AWAY: {
+      // Only the leaving (0..AWAY_GONE_AT) and returning
+      // (AWAY_RETURN_AT..AWAY_DONE_AT) legs reach this switch - the fully
+      // "gone" middle stretch already returned above.
+      if (s_anim_phase < AWAY_GONE_AT) {
+        draw_road(ctx, bounds, 2);
+        int swing = sine_wave(4, TRIG_MAX_ANGLE / 11);
+        bob = -(abs(swing) / 2);
+        arm_swing = swing;
+        leg_swing = swing / 2;
+        x_offset = (95 * s_anim_phase) / AWAY_GONE_AT;
+      } else if (s_anim_phase < AWAY_DONE_AT) {
+        draw_road(ctx, bounds, 2);
+        int swing = sine_wave(4, TRIG_MAX_ANGLE / 11);
+        bob = -(abs(swing) / 2);
+        arm_swing = swing;
+        leg_swing = swing / 2;
+        int t = s_anim_phase - AWAY_RETURN_AT;
+        int span = AWAY_DONE_AT - AWAY_RETURN_AT;
+        x_offset = -95 + (95 * t) / span;
+      } else {
+        // Script's done and nothing rerolled the state yet - settle into a
+        // calm idle bob instead of walking in place forever.
+        bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      }
       break;
     }
     case ROBOT_GOAL_REACHED:
@@ -532,18 +594,22 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       break;
     case ROBOT_IDLE:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      x_offset = s_robot_x_offset;
       break;
     case ROBOT_READING:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
       tilt = sine_wave(1, TRIG_MAX_ANGLE / 40);
+      x_offset = s_robot_x_offset;
       break;
     case ROBOT_WORKING:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
       arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 8);
+      x_offset = s_robot_x_offset;
       break;
     case ROBOT_EATING:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
       arm_swing = sine_wave(2, TRIG_MAX_ANGLE / 20);
+      x_offset = s_robot_x_offset;
       break;
     default:
       break;
@@ -552,6 +618,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   if (s_show_speech) arm_swing = -6;
   if (s_bounce) top_shift -= 2;
   int top = bounds.origin.y + top_shift;
+  cx += x_offset;
 
   // ---- antenna ----
   graphics_context_set_fill_color(ctx, BODY_DARK);
@@ -660,11 +727,11 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
 
   // ---- state decorations ----
   if (s_state == ROBOT_GOAL_REACHED) draw_confetti(ctx, head);
-  if (s_state == ROBOT_WEATHER_RAIN) draw_rain(ctx, head);
-  if (s_state == ROBOT_WEATHER_SUN) draw_sun(ctx, head);
   if (s_state == ROBOT_READING) draw_book(ctx, torso);
   if (s_state == ROBOT_WORKING) draw_laptop(ctx, torso, s_anim_phase);
   if (s_state == ROBOT_EATING) draw_snack(ctx, head);
+  if (s_state == ROBOT_CYCLING) draw_bicycle(ctx, torso, bounds);
+  draw_weather_icon(ctx, bounds);
   if (s_show_speech) draw_speech_bubble(ctx, head, bounds, s_speech_text);
 }
 
@@ -686,24 +753,55 @@ static void update_time(struct tm *tick_time) {
 }
 
 // ---------------- STEPS ----------------
+// Custom-drawn (not a TextLayer) so it can show a pixel-filled progress bar
+// above the step count instead of a "(NN%)" suffix.
+static void steps_layer_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  int bar_w = bounds.size.w - 50;
+  int bar_h = 6;
+  int bar_x = bounds.origin.x + (bounds.size.w - bar_w) / 2;
+  int bar_y = bounds.origin.y + 1;
+  GRect bar = GRect(bar_x, bar_y, bar_w, bar_h);
+
+  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_round_rect(ctx, bar, 3);
+
+  int pct = (s_steps_count * 100) / STEP_GOAL;
+  if (pct > 100) pct = 100;
+  int fill_w = ((bar_w - 2) * pct) / 100;
+  if (fill_w > 0) {
+    GRect fill = GRect(bar_x + 1, bar_y + 1, fill_w, bar_h - 2);
+    graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+    graphics_fill_rect(ctx, fill, 2, GCornersAll);
+  }
+
+  GRect text_rect = GRect(bounds.origin.x, bar_y + bar_h + 1, bounds.size.w,
+                           bounds.size.h - bar_h - 1);
+  graphics_context_set_text_color(ctx, ACCENT_COLOR);
+  graphics_draw_text(ctx, s_steps_buffer, s_steps_font, text_rect,
+                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+}
+
 static void update_steps(void) {
   if (!health_service_metric_accessible(HealthMetricStepCount,
         time_start_of_today(), time(NULL))) {
+    s_steps_count = 0;
     snprintf(s_steps_buffer, sizeof(s_steps_buffer), "Steps: n/a");
-    text_layer_set_text(s_steps_layer, s_steps_buffer);
+    layer_mark_dirty(s_steps_layer);
     return;
   }
 
   HealthValue steps = health_service_sum_today(HealthMetricStepCount);
-  int pct = (int)((steps * 100) / STEP_GOAL);
-  if (pct > 100) pct = 100;
+  s_steps_count = (int)steps;
 
   if (steps >= STEP_GOAL) {
     snprintf(s_steps_buffer, sizeof(s_steps_buffer), "%d steps - Goal! \xE2\x9C\x93", (int)steps);
   } else {
-    snprintf(s_steps_buffer, sizeof(s_steps_buffer), "%d steps (%d%%)", (int)steps, pct);
+    snprintf(s_steps_buffer, sizeof(s_steps_buffer), "%d steps", (int)steps);
   }
-  text_layer_set_text(s_steps_layer, s_steps_buffer);
+  layer_mark_dirty(s_steps_layer);
 
   evaluate_state();
 }
@@ -749,10 +847,13 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     s_anim_phase = 0;
   }
 
-  if (tick_time->tm_min % 30 == 0) {
+  // tick_handler runs every SECOND_UNIT tick, so this must also check
+  // tm_sec - otherwise it re-sends REQUEST_WEATHER on every one of the 60
+  // seconds within minute :00 and :30, flooding the AppMessage outbox.
+  if (tick_time->tm_min % 30 == 0 && tick_time->tm_sec == 0) {
     DictionaryIterator *iter;
     if (app_message_outbox_begin(&iter) == APP_MSG_OK) {
-      dict_write_uint8(iter, KEY_REQUEST_WEATHER, 1);
+      dict_write_uint8(iter, MESSAGE_KEY_REQUEST_WEATHER, 1);
       app_message_outbox_send();
     }
   }
@@ -808,6 +909,8 @@ static void trigger_speech(void) {
 static const char *const s_reading_phrases[] = { "hmm...", "good part!" };
 static const char *const s_working_phrases[] = { "busy...", "almost done" };
 static const char *const s_eating_phrases[] = { "yum!", "so good" };
+static const char *const s_cycling_phrases[] = { "let's ride!", "wheee!" };
+static const char *const s_away_phrases[] = { "brb!", "be right back" };
 
 // Called by tick_handler roughly every 10-19s while nothing else is going
 // on (walking/weather/etc. all take priority in evaluate_state()). Picks a
@@ -819,7 +922,12 @@ static void pick_idle_activity(void) {
   struct tm *t = localtime(&now);
   int hour = t->tm_hour;
 
-  RobotState pool[4];
+  // Every reroll also picks a new spot to wander to, so the robot drifts
+  // sideways over time instead of sitting frozen in the center - even when
+  // the activity itself doesn't change.
+  s_wander_target = (rand() % 101) - 50;
+
+  RobotState pool[8];
   int n = 0;
   pool[n++] = ROBOT_IDLE;
   pool[n++] = ROBOT_IDLE;
@@ -831,6 +939,8 @@ static void pick_idle_activity(void) {
   } else {
     pool[n++] = ROBOT_READING;
   }
+  pool[n++] = ROBOT_CYCLING;
+  pool[n++] = ROBOT_AWAY;
 
   RobotState next = pool[rand() % n];
   if (next != s_state) {
@@ -846,6 +956,10 @@ static void pick_idle_activity(void) {
         phrase = s_working_phrases[rand() % (sizeof(s_working_phrases) / sizeof(s_working_phrases[0]))];
       } else if (next == ROBOT_EATING) {
         phrase = s_eating_phrases[rand() % (sizeof(s_eating_phrases) / sizeof(s_eating_phrases[0]))];
+      } else if (next == ROBOT_CYCLING) {
+        phrase = s_cycling_phrases[rand() % (sizeof(s_cycling_phrases) / sizeof(s_cycling_phrases[0]))];
+      } else if (next == ROBOT_AWAY) {
+        phrase = s_away_phrases[rand() % (sizeof(s_away_phrases) / sizeof(s_away_phrases[0]))];
       }
       if (phrase) show_speech_text(phrase);
     }
@@ -879,8 +993,8 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
 
 // ---------------- APPMESSAGE (weather) ----------------
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
-  Tuple *temp_tuple = dict_find(iter, KEY_TEMPERATURE);
-  Tuple *cond_tuple = dict_find(iter, KEY_CONDITIONS);
+  Tuple *temp_tuple = dict_find(iter, MESSAGE_KEY_TEMPERATURE);
+  Tuple *cond_tuple = dict_find(iter, MESSAGE_KEY_CONDITIONS);
 
   if (temp_tuple) {
     snprintf(s_weather_buffer, sizeof(s_weather_buffer), "%d\xC2\xB0",
@@ -900,7 +1014,7 @@ static void inbox_dropped_callback(AppMessageResult reason, void *context) {}
 static void request_weather(void) {
   DictionaryIterator *iter;
   if (app_message_outbox_begin(&iter) == APP_MSG_OK) {
-    dict_write_uint8(iter, KEY_REQUEST_WEATHER, 1);
+    dict_write_uint8(iter, MESSAGE_KEY_REQUEST_WEATHER, 1);
     app_message_outbox_send();
   }
 }
@@ -912,9 +1026,10 @@ static void window_load(Window *window) {
 
   window_set_background_color(window, BG_COLOR);
 
-  s_time_font = fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
+  s_time_font = fonts_get_system_font(FONT_KEY_LECO_42_NUMBERS);
   s_small_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
   s_speech_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+  s_steps_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
 
   s_robot_layer = layer_create(GRect(0, 4, bounds.size.w, 76));
   layer_set_update_proc(s_robot_layer, robot_layer_update_proc);
@@ -927,15 +1042,9 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
-  // Steps and weather each get the full width on their own line now - at
-  // this font size, a half-width column isn't wide enough for something
-  // like "8543 steps (85%)" without wrapping into the row below.
-  s_steps_layer = text_layer_create(GRect(0, 128, bounds.size.w, 25));
-  text_layer_set_background_color(s_steps_layer, GColorClear);
-  text_layer_set_text_color(s_steps_layer, ACCENT_COLOR);
-  text_layer_set_font(s_steps_layer, s_small_font);
-  text_layer_set_text_alignment(s_steps_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_steps_layer));
+  s_steps_layer = layer_create(GRect(0, 128, bounds.size.w, 25));
+  layer_set_update_proc(s_steps_layer, steps_layer_update_proc);
+  layer_add_child(window_layer, s_steps_layer);
 
   s_weather_layer = text_layer_create(GRect(0, 153, bounds.size.w, 25));
   text_layer_set_background_color(s_weather_layer, GColorClear);
@@ -974,7 +1083,7 @@ static void window_unload(Window *window) {
   text_layer_destroy(s_time_layer);
   text_layer_destroy(s_day_layer);
   text_layer_destroy(s_date_layer);
-  text_layer_destroy(s_steps_layer);
+  layer_destroy(s_steps_layer);
   text_layer_destroy(s_weather_layer);
 }
 
@@ -1004,7 +1113,6 @@ static void deinit(void) {
   tick_timer_service_unsubscribe();
   health_service_events_unsubscribe();
   accel_tap_service_unsubscribe();
-  if (s_accel_streaming) accel_data_service_unsubscribe();
   window_destroy(s_window);
 }
 
