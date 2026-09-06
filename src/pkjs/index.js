@@ -1,52 +1,76 @@
-// API key and units are set from the phone app's Settings page (see
-// showConfiguration/webviewclosed below) and persisted in localStorage -
-// nothing to edit in this file. Get a free OpenWeatherMap key at
-// https://openweathermap.org/api.
-var API_KEY = localStorage.getItem("openweather_key") || "";
-var UNITS = localStorage.getItem("units") || "metric"; // "metric" = Celsius, "imperial" = Fahrenheit
+/**
+ * PebbleKit JS Weather Template
+ *
+ * Fetches weather data from Open-Meteo API (free, no API key needed)
+ * and sends temperature + conditions to the watch via AppMessage.
+ *
+ * Requires package.json to have:
+ *   "capabilities": ["location"],
+ *   "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER"],
+ *   "enableMultiJS": true
+ *
+ * Place this file at: src/pkjs/index.js
+ */
 
-var KEY_TEMPERATURE = 0;
-var KEY_CONDITIONS = 1;
-var KEY_WEATHER_ICON = 2;
-var KEY_REQUEST_WEATHER = 3;
+var xhrRequest = function (url, type, callback) {
+  var xhr = new XMLHttpRequest();
+  xhr.onload = function () {
+    callback(this.responseText);
+  };
+  xhr.open(type, url);
+  xhr.send();
+};
+
+/**
+ * Convert WMO weather codes to short human-readable strings.
+ * See: https://open-meteo.com/en/docs (WMO Weather interpretation codes)
+ */
+function weatherCodeToCondition(code) {
+  if (code === 0) return 'Clear';
+  if (code <= 3) return 'Cloudy';
+  if (code <= 48) return 'Fog';
+  if (code <= 55) return 'Drizzle';
+  if (code <= 57) return 'Fz. Drizzle';
+  if (code <= 65) return 'Rain';
+  if (code <= 67) return 'Fz. Rain';
+  if (code <= 75) return 'Snow';
+  if (code <= 77) return 'Snow Grains';
+  if (code <= 82) return 'Showers';
+  if (code <= 86) return 'Snow Shwrs';
+  if (code === 95) return 'T-Storm';
+  if (code <= 99) return 'T-Storm';
+  return 'Unknown';
+}
 
 function locationSuccess(pos) {
-  var lat = pos.coords.latitude;
-  var lon = pos.coords.longitude;
-  var url = "https://api.openweathermap.org/data/2.5/weather?lat=" + lat +
-            "&lon=" + lon + "&units=" + UNITS + "&appid=" + API_KEY;
+  // Open-Meteo: free weather API, no key required
+  var url = 'https://api.open-meteo.com/v1/forecast?' +
+      'latitude=' + pos.coords.latitude +
+      '&longitude=' + pos.coords.longitude +
+      '&current=temperature_2m,weather_code';
 
-  xhrRequest(url, "GET", function(responseText) {
+  xhrRequest(url, 'GET', function(responseText) {
     var json = JSON.parse(responseText);
+    var temperature = Math.round(json.current.temperature_2m);
+    var conditions = weatherCodeToCondition(json.current.weather_code);
 
-    if (json.cod && json.cod !== 200) {
-      console.log("Weather API error: " + JSON.stringify(json));
-      return;
-    }
+    var dictionary = {
+      'TEMPERATURE': temperature,
+      'CONDITIONS': conditions
+    };
 
-    var temperature = Math.round(json.main.temp);
-    var conditions = json.weather && json.weather[0] ? json.weather[0].main : "";
-
-    var dict = {};
-    dict[KEY_TEMPERATURE] = temperature;
-    dict[KEY_CONDITIONS] = conditions;
-
-    Pebble.sendAppMessage(dict,
-      function() { console.log("Weather sent to watch"); },
-      function(e) { console.log("Error sending weather: " + JSON.stringify(e)); }
+    Pebble.sendAppMessage(dictionary,
+      function(e) { console.log('Weather info sent to Pebble successfully!'); },
+      function(e) { console.log('Error sending weather info to Pebble!'); }
     );
   });
 }
 
 function locationError(err) {
-  console.log("Location error: " + JSON.stringify(err));
+  console.log('Error requesting location!');
 }
 
 function getWeather() {
-  if (!API_KEY) {
-    console.log("No OpenWeatherMap API key set yet - skipping weather fetch.");
-    return;
-  }
   navigator.geolocation.getCurrentPosition(
     locationSuccess,
     locationError,
@@ -54,90 +78,16 @@ function getWeather() {
   );
 }
 
-function xhrRequest(url, type, callback) {
-  var xhr = new XMLHttpRequest();
-  xhr.onload = function() {
-    callback(this.responseText);
-  };
-  xhr.open(type, url);
-  xhr.send();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function buildConfigPageUrl() {
-  var html = "<!DOCTYPE html><html><head><meta name='viewport' " +
-    "content='width=device-width,initial-scale=1'>" +
-    "<style>" +
-    "body{font-family:sans-serif;background:#0C1012;color:#fff;padding:16px}" +
-    "label{display:block;margin-top:16px;font-size:14px;color:#8fd6e8}" +
-    "input,select{width:100%;box-sizing:border-box;padding:8px;margin-top:4px;" +
-    "font-size:16px;border-radius:4px;border:1px solid #444;background:#1c2226;color:#fff}" +
-    "button{margin-top:24px;width:100%;padding:12px;font-size:16px;border:none;" +
-    "border-radius:4px;background:#00b3c6;color:#000;font-weight:bold}" +
-    "p{font-size:12px;color:#999}" +
-    "</style></head><body>" +
-    "<h2>Robi Settings</h2>" +
-    "<label>OpenWeatherMap API key</label>" +
-    "<input id='owkey' type='text' value='" + escapeHtml(API_KEY) + "' " +
-    "placeholder='leave blank to disable weather'>" +
-    "<p>Free key at openweathermap.org/api</p>" +
-    "<label>Units</label>" +
-    "<select id='units'>" +
-    "<option value='metric'" + (UNITS === "metric" ? " selected" : "") + ">Celsius</option>" +
-    "<option value='imperial'" + (UNITS === "imperial" ? " selected" : "") + ">Fahrenheit</option>" +
-    "</select>" +
-    "<button id='save'>Save</button>" +
-    "<script>" +
-    "document.getElementById('save').onclick = function() {" +
-    "  var settings = {" +
-    "    openweather_key: document.getElementById('owkey').value," +
-    "    units: document.getElementById('units').value" +
-    "  };" +
-    "  document.location = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(settings));" +
-    "};" +
-    "</script></body></html>";
-
-  return "data:text/html;charset=utf-8," + encodeURIComponent(html);
-}
-
-Pebble.addEventListener("ready", function() {
-  console.log("PebbleKit JS ready");
+// Fetch weather when JS runtime is ready
+Pebble.addEventListener('ready', function(e) {
+  console.log('PebbleKit JS ready!');
   getWeather();
 });
 
-Pebble.addEventListener("appmessage", function(e) {
-  if (e.payload[KEY_REQUEST_WEATHER] !== undefined) {
+// Handle weather refresh requests from the watch
+Pebble.addEventListener('appmessage', function(e) {
+  console.log('AppMessage received!');
+  if (e.payload['REQUEST_WEATHER']) {
     getWeather();
   }
 });
-
-Pebble.addEventListener("showConfiguration", function() {
-  Pebble.openURL(buildConfigPageUrl());
-});
-
-Pebble.addEventListener("webviewclosed", function(e) {
-  if (!e.response) {
-    return; // user backed out without saving
-  }
-  var settings;
-  try {
-    settings = JSON.parse(decodeURIComponent(e.response));
-  } catch (err) {
-    console.log("Could not parse config response: " + err);
-    return;
-  }
-
-  localStorage.setItem("openweather_key", settings.openweather_key || "");
-  localStorage.setItem("units", settings.units || "metric");
-
-  API_KEY = settings.openweather_key || "";
-  UNITS = settings.units || "metric";
-
-  console.log("Settings saved from config page");
-  getWeather();
-});
-
