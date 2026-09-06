@@ -1,6 +1,6 @@
 {
   "name": "robi",
-  "author": "you",
+  "author": "Oguz Yarimtepe",
   "version": "1.0.0",
   "keywords": ["pebble-app"],
   "private": true,
@@ -9,26 +9,13 @@
     "displayName": "Robi",
     "uuid": "5792521b-4d5a-4609-90ad-4bb3164a33b1",
     "sdkVersion": "3",
-    "enableMultiJS": false,
-    "targetPlatforms": [
-      "basalt",
-      "chalk",
-      "emery"
-    ],
+    "enableMultiJS": true,
+    "targetPlatforms": ["emery"],
     "watchapp": {
       "watchface": true
     },
-    "capabilities": [
-      "health",
-      "location",
-      "configurable"
-    ],
-    "messageKeys": [
-      "TEMPERATURE",
-      "CONDITIONS",
-      "WEATHER_ICON",
-      "REQUEST_WEATHER"
-    ],
+    "capabilities": ["health", "location"],
+    "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER"],
     "resources": {
       "media": []
     }
