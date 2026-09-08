@@ -169,8 +169,13 @@ static void evaluate_state(void) {
 static void anim_timer_callback(void *data) {
   s_anim_phase++;
 
-  if (s_robot_x_offset < s_wander_target) s_robot_x_offset += 2;
-  else if (s_robot_x_offset > s_wander_target) s_robot_x_offset -= 2;
+  // Step size is fixed at 2px/tick, but s_wander_target (odd or even) isn't
+  // guaranteed reachable in steps of 2 from the current offset - stepping
+  // past it and never landing exactly caused a permanent 1px-each-way
+  // shiver right at the destination. Clamp the last step to land exactly.
+  int wander_diff = s_wander_target - s_robot_x_offset;
+  if (wander_diff > 0) s_robot_x_offset += (wander_diff < 2) ? wander_diff : 2;
+  else if (wander_diff < 0) s_robot_x_offset += (wander_diff > -2) ? wander_diff : -2;
 
   layer_mark_dirty(s_robot_layer);
 

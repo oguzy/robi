@@ -1,5 +1,10 @@
 # Release Notes
 
+## 1.1.3
+
+- Fixed a permanent shiver/shake that could show up right when Robi
+  settled at the edge of its idle wander range.
+
 ## 1.1.2
 
 - Robi no longer gets stuck in one pose for as long as the weather holds.

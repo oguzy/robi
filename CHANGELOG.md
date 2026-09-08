@@ -2,6 +2,18 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.1.3 - 2026-09-08
+
+### Fixed
+- Idle wander shiver at the destination: `s_wander_target` (picked by
+  `pick_idle_activity()`) can land on any integer from -50 to 50, but
+  `s_robot_x_offset` only ever eased toward it in fixed steps of 2px from
+  an even starting point, so it could never exactly reach an odd target -
+  it overshot by 1px each direction and oscillated back and forth forever
+  once it got there, showing as a permanent shake right as the robot
+  settled at the edge of its wander range. The easing now clamps its last
+  step so it lands exactly on the target and stops.
+
 ## 1.1.2 - 2026-09-08
 
 ### Changed
