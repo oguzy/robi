@@ -12,6 +12,7 @@
 #define BG_COLOR GColorBlack
 #define TEXT_COLOR GColorWhite
 #define SPEECH_DURATION_MS 1800
+#define LOW_BATTERY_PCT 20  // at/below this (and not charging), robot visibly dims
 
 typedef enum {
   ROBOT_IDLE,
@@ -73,6 +74,7 @@ static int s_heart_rate = 0;
 
 static bool s_blink = false;
 static bool s_bounce = false;
+static bool s_low_battery = false;
 
 static RobotState s_state = ROBOT_IDLE;
 static int s_anim_phase = 0;
@@ -131,6 +133,14 @@ static bool is_excited(void) {
 static bool jump_mood_active(void) {
   return is_excited() &&
       (s_state == ROBOT_WALKING || s_state == ROBOT_CYCLING || s_state == ROBOT_READING);
+}
+
+// Low battery: robot's own accent lighting (eyes, antenna tip, chest core)
+// dims from ACCENT_COLOR to ACCENT_DIM, and idle blinking slows down (see
+// tick_handler) - a visible "powering down" look doubling as a low-battery
+// cue, rather than a text warning competing with the rest of the face.
+static GColor current_accent_color(void) {
+  return s_low_battery ? ACCENT_DIM : ACCENT_COLOR;
 }
 
 // ---------------- STATE EVALUATION ----------------
@@ -687,10 +697,10 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   // ---- antenna ----
   graphics_context_set_fill_color(ctx, BODY_DARK);
   graphics_fill_circle(ctx, GPoint(cx + tilt, top + 6 + bob), 2);
-  graphics_context_set_stroke_color(ctx, ACCENT_COLOR);
+  graphics_context_set_stroke_color(ctx, current_accent_color());
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_line(ctx, GPoint(cx + tilt, top + 1), GPoint(cx + tilt, top + 6 + bob));
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_context_set_fill_color(ctx, current_accent_color());
   graphics_fill_circle(ctx, GPoint(cx + tilt, top + bob), 2);
 
   // ---- head: shaded panel instead of a flat block with a uniform outline ----
@@ -722,7 +732,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect left_eye = GRect(cx - eye_gap / 2 - eye_w + tilt, eye_y, eye_w, eye_h);
   GRect right_eye = GRect(cx + eye_gap / 2 + tilt, eye_y, eye_w, eye_h);
 
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_context_set_fill_color(ctx, current_accent_color());
   graphics_fill_rect(ctx, left_eye, 2, GCornersAll);
   graphics_fill_rect(ctx, right_eye, 2, GCornersAll);
 
@@ -757,7 +767,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, chest_panel, 4, GCornersAll);
   graphics_context_set_fill_color(ctx, ACCENT_DIM);
   graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 8), 4);
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_context_set_fill_color(ctx, current_accent_color());
   graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 8), 2);
 
   // vent marks
@@ -880,6 +890,15 @@ static void update_heart_rate(void) {
   layer_mark_dirty(s_weather_layer);
 }
 
+// ---------------- BATTERY ----------------
+static void battery_handler(BatteryChargeState charge) {
+  bool low = !charge.is_charging && charge.charge_percent <= LOW_BATTERY_PCT;
+  if (low != s_low_battery) {
+    s_low_battery = low;
+    layer_mark_dirty(s_robot_layer);
+  }
+}
+
 static void health_handler(HealthEventType event, void *context) {
   if (event == HealthEventSignificantUpdate || event == HealthEventMovementUpdate) {
     update_steps();
@@ -964,7 +983,10 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 
   // Small idle-family micro-expressions: mostly a blink, occasionally a
   // smile instead, so the robot doesn't look frozen between activities.
-  if (is_idle_family(s_state) && (tick_time->tm_sec % 9) == 0 && (rand() % 3 == 0)) {
+  // Low battery halves the cadence (blinks half as often), part of the
+  // same "visibly powering down" cue as the dimmed accent color.
+  int blink_check_period = s_low_battery ? 18 : 9;
+  if (is_idle_family(s_state) && (tick_time->tm_sec % blink_check_period) == 0 && (rand() % 3 == 0)) {
     if (rand() % 4 == 0) {
       s_show_smile = true;
       layer_mark_dirty(s_robot_layer);
@@ -1197,6 +1219,7 @@ static void window_load(Window *window) {
   update_time(tick_time);
   update_steps();
   update_heart_rate();
+  battery_handler(battery_state_service_peek());
 
   s_anim_timer = app_timer_register(600, anim_timer_callback, NULL);
 }
@@ -1226,6 +1249,7 @@ static void init(void) {
   health_service_events_subscribe(health_handler, NULL);
   health_service_set_heart_rate_sample_period(60);
   accel_tap_service_subscribe(tap_handler);
+  battery_state_service_subscribe(battery_handler);
 
   app_message_register_inbox_received(inbox_received_handler);
   app_message_register_inbox_dropped(inbox_dropped_callback);
@@ -1238,6 +1262,7 @@ static void deinit(void) {
   tick_timer_service_unsubscribe();
   health_service_events_unsubscribe();
   accel_tap_service_unsubscribe();
+  battery_state_service_unsubscribe();
   window_destroy(s_window);
 }
 

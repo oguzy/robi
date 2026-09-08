@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.3.0
+
+- **Low-battery look** — when your watch battery is low and not
+  charging, Robi visibly dims (eyes, antenna, chest light) and blinks
+  less often, a subtle low-power cue built right into the character.
+
 ## 1.2.0
 
 - **Excited hop** — when your heart rate spikes (same threshold that

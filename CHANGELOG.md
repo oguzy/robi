@@ -2,6 +2,16 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.3.0 - 2026-09-08
+
+### Added
+- Battery-aware visuals: at/below `LOW_BATTERY_PCT` (20%) and not
+  charging, the robot's own accent lighting (eyes, antenna tip, chest
+  core) dims from `ACCENT_COLOR` to `ACCENT_DIM`, and idle blinking slows
+  to half its normal cadence - a visible "powering down" look via
+  `battery_state_service_subscribe()` / `current_accent_color()`, doubling
+  as a low-battery cue without a text warning competing with the face.
+
 ## 1.2.0 - 2026-09-08
 
 ### Added
