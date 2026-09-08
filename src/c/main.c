@@ -103,9 +103,13 @@ static bool is_idle_family(RobotState s) {
 
 // ---------------- STATE EVALUATION ----------------
 static void evaluate_state(void) {
-  HealthValue steps = health_service_metric_accessible(HealthMetricStepCount,
-        time_start_of_today(), time(NULL))
-        ? health_service_sum_today(HealthMetricStepCount) : 0;
+  // Goal check uses the cached count from update_steps() (refreshed once a
+  // minute, plus on health events) rather than re-querying HealthService
+  // here. evaluate_state() runs every second for most states (idle family,
+  // sleepy, weather-reactive), and health_service_sum_today() is a real
+  // HealthService DB query - calling it 60x/minute stole enough CPU from
+  // the 100ms animation timer to cause visible stutter/trembling.
+  int steps = s_steps_count;
 
   if (steps >= STEP_GOAL && !s_goal_celebrated_today) {
     s_state = ROBOT_GOAL_REACHED;

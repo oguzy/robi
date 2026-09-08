@@ -1,5 +1,14 @@
 # Release Notes
 
+## 1.1.0
+
+- **Heart rate readout** — a color-coded heart (green normally, red at or
+  above 120 bpm) plus BPM number, shown right next to the temperature.
+  Day and date are now merged onto one line to make room for it.
+- **Smoother animation** — fixed a per-second HealthService query that
+  was stealing CPU from the animation loop and causing visible
+  trembling/stuttering in Robi's movements.
+
 ## 1.0.0
 
 Meet Robi — a robot companion that lives on your wrist and reacts to your

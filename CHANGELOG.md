@@ -2,7 +2,16 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
-## Unreleased (feature/health-status)
+## 1.1.0 - 2026-09-08
+
+### Fixed
+- Animation trembling/stuttering: `evaluate_state()` was re-querying
+  `health_service_sum_today()` every second (via the SECOND_UNIT tick
+  handler) just to check the step goal, for almost every state the watch
+  is normally in. That HealthService DB query running 60x/minute stole
+  CPU from the 100ms animation timer. It now reads the step count already
+  cached by `update_steps()` (refreshed every minute and on health
+  events) instead of re-querying HealthService on every tick.
 
 ### Added
 - Heart rate readout next to the temperature: a small heart icon plus BPM
