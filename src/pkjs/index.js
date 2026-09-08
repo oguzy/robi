@@ -8,8 +8,15 @@
  *   "capabilities": ["location"],
  *   "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER",
  *                   "SUNRISE_MINUTES", "SUNSET_MINUTES",
- *                   "WIND_SPEED_KMH", "UV_INDEX"],
+ *                   "WIND_SPEED_KMH", "UV_INDEX", "STEP_GOAL",
+ *                   "ACCENT_COLOR_HEX", "BIRTHDAY_MONTH", "BIRTHDAY_DAY"],
  *   "enableMultiJS": true
+ *
+ * Also implements the phone app's config page (step goal, accent color,
+ * optional birthday) - a plain hand-rolled HTML form opened via a data:
+ * URL rather than a hosted page or the Clay library, so the whole
+ * watchface stays a single self-contained project with no external
+ * config-page hosting to maintain.
  *
  * Place this file at: src/pkjs/index.js
  */
@@ -102,10 +109,130 @@ function getWeather() {
   );
 }
 
+// ---------------- CONFIG PAGE ----------------
+var CONFIG_STORAGE_KEY = 'robiConfig';
+var DEFAULT_CONFIG = { stepGoal: 10000, accentColor: '#55efef', birthdayMonth: 0, birthdayDay: 0 };
+
+function loadStoredConfig() {
+  try {
+    var raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      return {
+        stepGoal: parsed.stepGoal || DEFAULT_CONFIG.stepGoal,
+        accentColor: parsed.accentColor || DEFAULT_CONFIG.accentColor,
+        birthdayMonth: parsed.birthdayMonth || 0,
+        birthdayDay: parsed.birthdayDay || 0
+      };
+    }
+  } catch (e) {
+    console.log('Error reading stored config: ' + e);
+  }
+  return DEFAULT_CONFIG;
+}
+
+function saveStoredConfig(cfg) {
+  try {
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(cfg));
+  } catch (e) {
+    console.log('Error saving config: ' + e);
+  }
+}
+
+function pad2(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function hexToInt(hex) {
+  return parseInt(hex.replace('#', ''), 16);
+}
+
+// A plain HTML form, not a hosted page or Clay - built fresh each time
+// with the current settings baked in as default values, since the
+// data: URL page and this PKJS runtime don't share localStorage (they're
+// different origins) to read current values from directly.
+function buildConfigHtml(cfg) {
+  var birthdayValue = (cfg.birthdayMonth && cfg.birthdayDay)
+      ? ('2000-' + pad2(cfg.birthdayMonth) + '-' + pad2(cfg.birthdayDay))
+      : '';
+
+  return '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>Robi Settings</title>' +
+    '<style>' +
+      'body{font-family:-apple-system,Helvetica,Arial,sans-serif;background:#111;color:#eee;margin:0;padding:20px;}' +
+      'h1{font-size:20px;margin:0 0 20px;color:#55efef;}' +
+      'label{display:block;margin:16px 0 6px;font-size:14px;color:#ccc;}' +
+      'input[type=number],input[type=date]{width:100%;box-sizing:border-box;padding:10px;font-size:16px;border-radius:6px;border:1px solid #444;background:#222;color:#eee;}' +
+      'input[type=color]{width:100%;height:44px;border:1px solid #444;border-radius:6px;background:#222;padding:2px;}' +
+      '.hint{font-size:12px;color:#888;margin-top:4px;}' +
+      'button{margin-top:28px;width:100%;padding:14px;font-size:16px;border:none;border-radius:8px;background:#55efef;color:#111;font-weight:bold;}' +
+    '</style></head><body>' +
+    '<h1>Robi Settings</h1>' +
+    '<form id="f">' +
+      '<label>Daily step goal</label>' +
+      '<input type="number" id="stepGoal" min="1000" max="50000" step="500" value="' + cfg.stepGoal + '">' +
+      '<label>Accent color</label>' +
+      '<input type="color" id="accentColor" value="' + cfg.accentColor + '">' +
+      '<label>Birthday (optional)</label>' +
+      '<input type="date" id="birthday" value="' + birthdayValue + '">' +
+      '<div class="hint">Robi wears a party hat and says happy birthday on this day every year. Leave blank to disable.</div>' +
+      '<button type="submit">Save</button>' +
+    '</form>' +
+    '<script>' +
+    'document.getElementById("f").addEventListener("submit", function(e) {' +
+      'e.preventDefault();' +
+      'var stepGoal = parseInt(document.getElementById("stepGoal").value, 10) || ' + DEFAULT_CONFIG.stepGoal + ';' +
+      'var accentColor = document.getElementById("accentColor").value;' +
+      'var bday = document.getElementById("birthday").value;' +
+      'var birthdayMonth = 0, birthdayDay = 0;' +
+      'if (bday) {' +
+        'var parts = bday.split("-");' +
+        'birthdayMonth = parseInt(parts[1], 10);' +
+        'birthdayDay = parseInt(parts[2], 10);' +
+      '}' +
+      'var result = { stepGoal: stepGoal, accentColor: accentColor, birthdayMonth: birthdayMonth, birthdayDay: birthdayDay };' +
+      'location.href = "pebble://close#" + encodeURIComponent(JSON.stringify(result));' +
+    '});' +
+    '</script></body></html>';
+}
+
+function sendConfig(cfg) {
+  var dictionary = {
+    'STEP_GOAL': cfg.stepGoal,
+    'ACCENT_COLOR_HEX': hexToInt(cfg.accentColor),
+    'BIRTHDAY_MONTH': cfg.birthdayMonth || 0,
+    'BIRTHDAY_DAY': cfg.birthdayDay || 0
+  };
+  Pebble.sendAppMessage(dictionary,
+    function(e) { console.log('Config sent to Pebble successfully!'); },
+    function(e) { console.log('Error sending config to Pebble!'); }
+  );
+}
+
+Pebble.addEventListener('showConfiguration', function(e) {
+  var html = buildConfigHtml(loadStoredConfig());
+  Pebble.openURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+});
+
+Pebble.addEventListener('webviewclosed', function(e) {
+  if (!e.response) return;  // config page was dismissed without saving
+  try {
+    var cfg = JSON.parse(decodeURIComponent(e.response));
+    saveStoredConfig(cfg);
+    sendConfig(cfg);
+  } catch (err) {
+    console.log('Error parsing config response: ' + err);
+  }
+});
+
 // Fetch weather when JS runtime is ready
 Pebble.addEventListener('ready', function(e) {
   console.log('PebbleKit JS ready!');
   getWeather();
+  // Resend the phone's cached config too, in case the watch app was
+  // reinstalled (losing its own persisted copy) since the last save.
+  sendConfig(loadStoredConfig());
 });
 
 // Handle weather refresh requests from the watch

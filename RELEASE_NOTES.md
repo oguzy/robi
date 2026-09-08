@@ -1,5 +1,16 @@
 # Release Notes
 
+## 1.13.0
+
+- **Settings page** — set your own daily step goal and pick any accent
+  color you like, right from the Pebble phone app's settings screen.
+- **Achievement badges** — a 7-day or 30-day streak gets gold confetti
+  and a bigger celebration than an ordinary daily goal.
+- **Birthday mode** — tell Robi your birthday (optional) and it'll wear
+  a party hat and wish you a happy birthday, every year.
+- **Seasonal costumes** — a pumpkin hat for Halloween week, a Santa hat
+  for the run-up to Christmas.
+
 ## 1.12.0
 
 - **Wake-up scene** — Robi doesn't just snap awake at 6am anymore. A

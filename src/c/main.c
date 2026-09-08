@@ -1,11 +1,13 @@
 #include <pebble.h>
 
 // ---------- CONFIG ----------
-#define STEP_GOAL 10000
+// Step goal and accent color are user-configurable (see the phone app's
+// config page, wired up in src/pkjs/index.js) - these are just the
+// fallback defaults used until a config value has been received/persisted.
+#define DEFAULT_STEP_GOAL 10000
+#define DEFAULT_ACCENT_HEX 0x55EFEF
 #define HEART_RATE_HIGH 120  // bpm - heart icon/number turn red at or above this
 #define HEART_RATE_LOW 55  // bpm - at/below this (and a real reading), idle activities get a calm, slow sway
-#define ACCENT_COLOR GColorFromHEX(0x55EFEF)
-#define ACCENT_DIM GColorFromHEX(0x2F8F8F)
 #define BODY_LIGHT GColorFromHEX(0x8A9096)
 #define BODY_MID GColorFromHEX(0x52565C)
 #define BODY_DARK GColorFromHEX(0x26282B)
@@ -17,6 +19,10 @@
 #define LOW_BATTERY_PCT 20  // at/below this (and not charging), robot visibly dims
 #define PERSIST_KEY_STREAK_COUNT 1
 #define PERSIST_KEY_STREAK_LAST_DAY 2
+#define PERSIST_KEY_STEP_GOAL 3
+#define PERSIST_KEY_ACCENT_HEX 4
+#define PERSIST_KEY_BIRTHDAY_MONTH 5
+#define PERSIST_KEY_BIRTHDAY_DAY 6
 
 typedef enum {
   ROBOT_IDLE,
@@ -59,6 +65,7 @@ typedef enum {
 static void pick_idle_activity(void);
 static void update_step_streak(void);
 static void trigger_wake_greeting(void);
+static void show_speech_text(const char *text);
 
 static Window *s_window;
 static Layer *s_robot_layer;
@@ -85,6 +92,16 @@ static int s_sunset_min = -1;
 static int s_wind_speed_kmh = -1;  // -1 = not received yet
 static int s_uv_index = -1;
 
+// User-configurable via the phone app's config page (see
+// src/pkjs/index.js) - loaded from persistent storage at startup,
+// falling back to the DEFAULT_* values above if never configured.
+static int s_step_goal = DEFAULT_STEP_GOAL;
+static GColor s_accent_color;
+static GColor s_accent_dim;
+static int s_birthday_month = 0;  // 1-12, 0 = not set
+static int s_birthday_day = 0;    // 1-31, 0 = not set
+static bool s_birthday_greeted_today = false;
+
 static bool s_blink = false;
 static bool s_bounce = false;
 static bool s_low_battery = false;
@@ -92,6 +109,7 @@ static bool s_low_battery = false;
 static RobotState s_state = ROBOT_IDLE;
 static int s_anim_phase = 0;
 static bool s_goal_celebrated_today = false;
+static bool s_big_celebration = false;  // milestone streak (7 or 30 days) - bigger confetti + longer celebration
 static AppTimer *s_anim_timer = NULL;
 static int s_idle_activity_countdown = 0;
 
@@ -122,6 +140,29 @@ static bool is_special_time(void) {
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
   return (t->tm_hour % 12 == 11 && t->tm_min == 11);
+}
+
+// Birthday (set via the config page) is month/day only, no year - so it
+// recurs every year without needing to know which year it is.
+static bool is_birthday_today(void) {
+  if (s_birthday_month == 0 || s_birthday_day == 0) return false;
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  return (t->tm_mon + 1) == s_birthday_month && t->tm_mday == s_birthday_day;
+}
+
+// Seasonal costume windows - checked in that priority order (birthday
+// takes precedence over these) in robot_layer_update_proc().
+static bool is_halloween_week(void) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  return (t->tm_mon + 1) == 10 && t->tm_mday >= 25 && t->tm_mday <= 31;
+}
+
+static bool is_christmas_season(void) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  return (t->tm_mon + 1) == 12 && t->tm_mday >= 15 && t->tm_mday <= 25;
 }
 
 // The "nothing else going on" states, cycled through randomly by
@@ -183,7 +224,7 @@ static bool calm_mood_active(void) {
 }
 
 // Low-activity nudge: compares today's steps against a simple linear
-// pace target for the hour of day (STEP_GOAL spread over 24h) rather
+// pace target for the hour of day (s_step_goal spread over 24h) rather
 // than anything walking-hours-aware, since that's plenty to notice
 // "way behind" without needing sunrise/activity-window data. The
 // morning gets a pass (hour < 12) so it doesn't nag before most people
@@ -192,7 +233,7 @@ static bool is_behind_pace(void) {
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
   if (t->tm_hour < 12) return false;
-  int expected = (STEP_GOAL * t->tm_hour) / 24;
+  int expected = (s_step_goal * t->tm_hour) / 24;
   return s_steps_count < expected / 2;
 }
 
@@ -217,14 +258,33 @@ static bool is_dusk_or_dawn(void) {
          abs(minutes - s_sunset_min) <= DUSK_DAWN_WINDOW_MIN;
 }
 
+// Derives a dimmed variant of any accent color by dropping each RGB
+// channel one quantization step (Pebble's GColor8 channels are 2 bits,
+// i.e. 4 levels - GColorFromRGBA quantizes via >>6, see
+// gcolor_definitions.h). This exactly reproduces the original
+// hand-picked ACCENT_DIM (0x2F8F8F) from the original ACCENT_COLOR
+// (0x55EFEF) by construction, and generalizes to any user-chosen color
+// from the config page instead of needing a second color picker.
+static GColor dim_color(GColor c) {
+  uint8_t r = c.r > 0 ? c.r - 1 : 0;
+  uint8_t g = c.g > 0 ? c.g - 1 : 0;
+  uint8_t b = c.b > 0 ? c.b - 1 : 0;
+  return (GColor8){ .r = r, .g = g, .b = b, .a = 3 };
+}
+
+static void apply_accent_color(GColor c) {
+  s_accent_color = c;
+  s_accent_dim = dim_color(c);
+}
+
 // Low battery: robot's own accent lighting (eyes, antenna tip, chest core)
-// dims from ACCENT_COLOR to ACCENT_DIM, and idle blinking slows down (see
+// dims from s_accent_color to s_accent_dim, and idle blinking slows down (see
 // tick_handler) - a visible "powering down" look doubling as a low-battery
 // cue, rather than a text warning competing with the rest of the face.
 // Dusk/dawn dimming reuses the same visual language rather than a full
 // separate palette swap.
 static GColor current_accent_color(void) {
-  return (s_low_battery || is_dusk_or_dawn()) ? ACCENT_DIM : ACCENT_COLOR;
+  return (s_low_battery || is_dusk_or_dawn()) ? s_accent_dim : s_accent_color;
 }
 
 // ---------------- STATE EVALUATION ----------------
@@ -237,7 +297,7 @@ static void evaluate_state(void) {
   // the 100ms animation timer to cause visible stutter/trembling.
   int steps = s_steps_count;
 
-  if (steps >= STEP_GOAL && !s_goal_celebrated_today) {
+  if (steps >= s_step_goal && !s_goal_celebrated_today) {
     s_state = ROBOT_GOAL_REACHED;
     s_goal_celebrated_today = true;
     s_anim_phase = 0;
@@ -298,10 +358,11 @@ static void anim_timer_callback(void *data) {
 
   layer_mark_dirty(s_robot_layer);
 
-  if (s_state == ROBOT_GOAL_REACHED && s_anim_phase > 20) {
+  if (s_state == ROBOT_GOAL_REACHED && s_anim_phase > (s_big_celebration ? 40 : 20)) {
     s_state = ROBOT_IDLE;
     s_anim_phase = 0;
     s_idle_activity_countdown = 0;
+    s_big_celebration = false;
   }
 
   if (s_state == ROBOT_WAKING && s_anim_phase > 25) {
@@ -351,7 +412,7 @@ static void draw_road(GContext *ctx, GRect bounds, int speed) {
   graphics_context_set_fill_color(ctx, GColorDarkGray);
   graphics_fill_rect(ctx, road, 0, GCornerNone);
 
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_context_set_fill_color(ctx, s_accent_color);
   int dash_w = 10, gap = 14;
   int scroll = (s_anim_phase * speed) % (dash_w + gap);
   for (int x = -scroll; x < bounds.size.w; x += (dash_w + gap)) {
@@ -412,7 +473,7 @@ static void draw_sleeping_scene(GContext *ctx, GRect bounds) {
   graphics_context_set_fill_color(ctx, BODY_LIGHT);
   graphics_fill_rect(ctx, body_hi, 5, GCornersTop);
   // dim chest light (not the bright pulse used while awake)
-  graphics_context_set_fill_color(ctx, ACCENT_DIM);
+  graphics_context_set_fill_color(ctx, s_accent_dim);
   graphics_fill_circle(ctx, GPoint(body.origin.x + 11, body.origin.y + 6), 2);
 
   GRect head = GRect(bed_x + 5, body_y - 6, 17, 16);
@@ -427,7 +488,7 @@ static void draw_sleeping_scene(GContext *ctx, GRect bounds) {
   GRect visor = GRect(head.origin.x + 2, head.origin.y + 7, 12, 6);
   graphics_context_set_fill_color(ctx, VISOR_COLOR);
   graphics_fill_rect(ctx, visor, 2, GCornersAll);
-  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_color(ctx, s_accent_dim);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_line(ctx, GPoint(visor.origin.x + 2, visor.origin.y + 2),
                            GPoint(visor.origin.x + 5, visor.origin.y + 2));
@@ -436,9 +497,9 @@ static void draw_sleeping_scene(GContext *ctx, GRect bounds) {
 
   // blanket with a fold line for a little dimension
   GRect blanket = GRect(bed_x + 17, bed_y + bed_h - 6, bed_w - 20, 6);
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_context_set_fill_color(ctx, s_accent_color);
   graphics_fill_rect(ctx, blanket, 2, GCornersAll);
-  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_color(ctx, s_accent_dim);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_line(ctx, GPoint(blanket.origin.x + 4, blanket.origin.y + blanket.size.h - 2),
                            GPoint(blanket.origin.x + blanket.size.w - 4, blanket.origin.y + blanket.size.h - 2));
@@ -455,13 +516,85 @@ static void draw_sleeping_scene(GContext *ctx, GRect bounds) {
 }
 
 // ---------------- DECORATION OVERLAYS ----------------
-static void draw_confetti(GContext *ctx, GRect head) {
-  GColor colors[] = { ACCENT_COLOR, GColorRajah, GColorMagenta, GColorYellow };
-  for (int i = 0; i < 6; i++) {
+// `big` is true for a milestone streak (see update_step_streak()) - a
+// gold/chrome palette and an extra piece or two, so hitting a 1-week or
+// 1-month streak visibly stands out from an ordinary daily goal.
+static void draw_confetti(GContext *ctx, GRect head, bool big) {
+  GColor normal_colors[] = { s_accent_color, GColorRajah, GColorMagenta, GColorYellow };
+  GColor big_colors[] = { GColorChromeYellow, GColorYellow, GColorRajah, GColorWhite };
+  GColor *colors = big ? big_colors : normal_colors;
+  int count = big ? 9 : 6;
+  for (int i = 0; i < count; i++) {
     int x = head.origin.x + (i * 17 + (s_anim_phase * 5)) % head.size.w;
     int y = head.origin.y - 6 - ((s_anim_phase * 3 + i * 9) % 20);
     graphics_context_set_fill_color(ctx, colors[i % 4]);
     graphics_fill_circle(ctx, GPoint(x, y), 2);
+  }
+}
+
+// Seasonal head decorations - drawn regardless of activity/state (like
+// draw_weather_icon), in priority order: birthday > Halloween > Christmas.
+// A party hat, pumpkin hat, and Santa hat, each a simple cone/dome plus a
+// small accent piece, sized to sit just above the head next to the
+// antenna rather than centered on top of it (avoids overlapping the
+// antenna's own thin vertical line). The robot_layer is only 76px tall
+// and head.origin.y itself is usually just 1-11px from the layer's own
+// top edge (y=0, where anything above gets clipped) - so every hat here
+// is capped to rise no higher than head.origin.y - 6, matching the
+// antenna's own ball (at top+bob, i.e. head.origin.y - 6) which is
+// already proven to fit at that height across every existing pose.
+static void draw_party_hat(GContext *ctx, GRect head) {
+  int cx = head.origin.x + head.size.w - 10;
+  int base_y = head.origin.y + 2;
+  GPoint tip = GPoint(cx, head.origin.y - 6);
+  GPoint base_l = GPoint(cx - 6, base_y);
+  GPoint base_r = GPoint(cx + 6, base_y);
+  GPoint cone[3] = { tip, base_l, base_r };
+  GPathInfo cone_info = { .num_points = 3, .points = cone };
+  GPath *cone_path = gpath_create(&cone_info);
+  graphics_context_set_fill_color(ctx, GColorMagenta);
+  gpath_draw_filled(ctx, cone_path);
+  gpath_destroy(cone_path);
+  graphics_context_set_fill_color(ctx, s_accent_color);
+  graphics_fill_circle(ctx, tip, 2);
+}
+
+static void draw_pumpkin_hat(GContext *ctx, GRect head) {
+  int cx = head.origin.x + head.size.w - 10;
+  int cy = head.origin.y + 1;
+  graphics_context_set_fill_color(ctx, GColorDarkGreen);
+  graphics_fill_rect(ctx, GRect(cx - 1, head.origin.y - 6, 2, 4), 0, GCornerNone);
+  graphics_context_set_fill_color(ctx, GColorOrange);
+  graphics_fill_circle(ctx, GPoint(cx, cy), 5);
+  graphics_context_set_stroke_color(ctx, GColorChromeYellow);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_line(ctx, GPoint(cx, cy - 4), GPoint(cx, cy + 4));
+}
+
+static void draw_santa_hat(GContext *ctx, GRect head) {
+  int cx = head.origin.x + head.size.w - 10;
+  int base_y = head.origin.y + 3;
+  GPoint tip = GPoint(cx + 5, head.origin.y - 6);
+  GPoint base_l = GPoint(cx - 7, base_y);
+  GPoint base_r = GPoint(cx + 7, base_y - 2);
+  GPoint cone[3] = { tip, base_l, base_r };
+  GPathInfo cone_info = { .num_points = 3, .points = cone };
+  GPath *cone_path = gpath_create(&cone_info);
+  graphics_context_set_fill_color(ctx, GColorRed);
+  gpath_draw_filled(ctx, cone_path);
+  gpath_destroy(cone_path);
+  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_fill_circle(ctx, tip, 2);
+  graphics_fill_rect(ctx, GRect(cx - 8, base_y - 3, 16, 4), 2, GCornersAll);
+}
+
+static void draw_seasonal_decoration(GContext *ctx, GRect head) {
+  if (is_birthday_today()) {
+    draw_party_hat(ctx, head);
+  } else if (is_halloween_week()) {
+    draw_pumpkin_hat(ctx, head);
+  } else if (is_christmas_season()) {
+    draw_santa_hat(ctx, head);
   }
 }
 
@@ -572,7 +705,7 @@ static void draw_laptop(GContext *ctx, GRect torso, int phase) {
   graphics_context_set_fill_color(ctx, VISOR_COLOR);
   graphics_fill_rect(ctx, screen, 1, GCornersAll);
 
-  graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+  graphics_context_set_fill_color(ctx, s_accent_color);
   int line_len = 4 + (phase % 3) * 2;
   graphics_fill_rect(ctx, GRect(screen.origin.x + 2, screen.origin.y + 2, line_len, 1), 0, GCornerNone);
   graphics_fill_rect(ctx, GRect(screen.origin.x + 2, screen.origin.y + 5, 6, 1), 0, GCornerNone);
@@ -605,7 +738,7 @@ static void draw_bicycle(GContext *ctx, GRect torso, GRect bounds) {
   graphics_draw_line(ctx, right_wheel, seat);
   graphics_draw_line(ctx, left_wheel, right_wheel);
 
-  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_color(ctx, s_accent_dim);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_circle(ctx, left_wheel, wheel_r);
   graphics_draw_circle(ctx, right_wheel, wheel_r);
@@ -660,7 +793,7 @@ static void draw_limb(GContext *ctx, GRect r) {
   graphics_fill_rect(ctx, hi, 2, GCornersLeft);
 
   GRect cuff = GRect(r.origin.x, r.origin.y + r.size.h - 5, r.size.w, 1);
-  graphics_context_set_fill_color(ctx, ACCENT_DIM);
+  graphics_context_set_fill_color(ctx, s_accent_dim);
   graphics_fill_rect(ctx, cuff, 1, GCornersAll);
 
   GRect cap = GRect(r.origin.x - 1, r.origin.y + r.size.h - 2, r.size.w + 2, 4);
@@ -897,14 +1030,14 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   // usual flat line (wider when talking or celebrating) ----
   if (!s_blink && s_show_smile) {
     GRect smile_rect = GRect(cx - 6 + tilt, head.origin.y + head_h - 12, 12, 10);
-    graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+    graphics_context_set_stroke_color(ctx, s_accent_dim);
     graphics_context_set_stroke_width(ctx, 1);
     graphics_draw_arc(ctx, smile_rect, GOvalScaleModeFitCircle,
                        DEG_TO_TRIGANGLE(120), DEG_TO_TRIGANGLE(240));
   } else if (!s_blink) {
     int mouth_w = (s_state == ROBOT_GOAL_REACHED || s_show_speech) ? 14 : 9;
     GRect mouth = GRect(cx - mouth_w / 2 + tilt, head.origin.y + head_h - 6, mouth_w, 1);
-    graphics_context_set_fill_color(ctx, ACCENT_DIM);
+    graphics_context_set_fill_color(ctx, s_accent_dim);
     graphics_fill_rect(ctx, mouth, 1, GCornersAll);
   }
 
@@ -922,7 +1055,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect chest_panel = GRect(torso.origin.x + torso_w / 2 - 10, torso.origin.y + 3, 20, 7);
   graphics_context_set_fill_color(ctx, GColorWhite);
   graphics_fill_rect(ctx, chest_panel, 4, GCornersAll);
-  graphics_context_set_fill_color(ctx, ACCENT_DIM);
+  graphics_context_set_fill_color(ctx, s_accent_dim);
   graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 8), 4);
   graphics_context_set_fill_color(ctx, current_accent_color());
   graphics_fill_circle(ctx, GPoint(torso.origin.x + torso_w / 2, torso.origin.y + 8), 2);
@@ -957,12 +1090,13 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_circle(ctx, GPoint(cx + leg_gap / 2 + leg_w / 2 + tilt, torso.origin.y + torso_h + 1), 3);
 
   // ---- state decorations ----
-  if (s_state == ROBOT_GOAL_REACHED) draw_confetti(ctx, head);
+  if (s_state == ROBOT_GOAL_REACHED) draw_confetti(ctx, head, s_big_celebration);
   if (s_state == ROBOT_READING) draw_book(ctx, torso);
   if (s_state == ROBOT_WORKING) draw_laptop(ctx, torso, s_anim_phase);
   if (s_state == ROBOT_EATING) draw_snack(ctx, head);
   if (s_state == ROBOT_CYCLING) draw_bicycle(ctx, torso, bounds);
   draw_weather_icon(ctx, bounds);
+  draw_seasonal_decoration(ctx, head);
   if (s_show_speech) draw_speech_bubble(ctx, head, bounds, s_speech_text);
 }
 
@@ -977,6 +1111,7 @@ static void update_time(struct tm *tick_time) {
 
   if (tick_time->tm_hour == 0 && tick_time->tm_min == 0) {
     s_goal_celebrated_today = false;
+    s_birthday_greeted_today = false;
   }
 }
 
@@ -992,22 +1127,22 @@ static void steps_layer_update_proc(Layer *layer, GContext *ctx) {
   int bar_y = bounds.origin.y + 1;
   GRect bar = GRect(bar_x, bar_y, bar_w, bar_h);
 
-  graphics_context_set_stroke_color(ctx, ACCENT_DIM);
+  graphics_context_set_stroke_color(ctx, s_accent_dim);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_round_rect(ctx, bar, 3);
 
-  int pct = (s_steps_count * 100) / STEP_GOAL;
+  int pct = (s_steps_count * 100) / s_step_goal;
   if (pct > 100) pct = 100;
   int fill_w = ((bar_w - 2) * pct) / 100;
   if (fill_w > 0) {
     GRect fill = GRect(bar_x + 1, bar_y + 1, fill_w, bar_h - 2);
-    graphics_context_set_fill_color(ctx, ACCENT_COLOR);
+    graphics_context_set_fill_color(ctx, s_accent_color);
     graphics_fill_rect(ctx, fill, 2, GCornersAll);
   }
 
   GRect text_rect = GRect(bounds.origin.x, bar_y + bar_h + 1, bounds.size.w,
                            bounds.size.h - bar_h - 1);
-  graphics_context_set_text_color(ctx, ACCENT_COLOR);
+  graphics_context_set_text_color(ctx, s_accent_color);
   graphics_draw_text(ctx, s_steps_buffer, s_steps_font, text_rect,
                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
@@ -1024,7 +1159,7 @@ static void update_steps(void) {
   HealthValue steps = health_service_sum_today(HealthMetricStepCount);
   s_steps_count = (int)steps;
 
-  if (steps >= STEP_GOAL) {
+  if (steps >= s_step_goal) {
     snprintf(s_steps_buffer, sizeof(s_steps_buffer), "%d steps - Goal! \xE2\x9C\x93", (int)steps);
   } else {
     snprintf(s_steps_buffer, sizeof(s_steps_buffer), "%d steps", (int)steps);
@@ -1111,7 +1246,7 @@ static void draw_battery_row(GContext *ctx, GRect bounds) {
   graphics_fill_rect(ctx, GRect(batt_x + batt_w, batt_y + batt_h / 2 - 2, 2, 4), 0, GCornerNone);
 
   GColor fill_color = charge.is_charging ? GColorGreen
-      : (charge.charge_percent <= LOW_BATTERY_PCT ? GColorRed : ACCENT_COLOR);
+      : (charge.charge_percent <= LOW_BATTERY_PCT ? GColorRed : s_accent_color);
   int fill_w = ((batt_w - 2) * charge.charge_percent) / 100;
   if (fill_w > 0) {
     graphics_context_set_fill_color(ctx, fill_color);
@@ -1150,11 +1285,11 @@ static void weather_layer_update_proc(Layer *layer, GContext *ctx) {
   int start_x = bounds.origin.x + (bounds.size.w - total_w) / 2;
 
   GRect temp_rect = GRect(start_x, bounds.origin.y, temp_size.w, bounds.size.h);
-  graphics_context_set_text_color(ctx, ACCENT_COLOR);
+  graphics_context_set_text_color(ctx, s_accent_color);
   graphics_draw_text(ctx, s_weather_buffer, s_small_font, temp_rect,
                       GTextOverflowModeFill, GTextAlignmentLeft, NULL);
 
-  GColor heart_color = ACCENT_DIM;
+  GColor heart_color = s_accent_dim;
   if (s_heart_rate > 0) {
     heart_color = (s_heart_rate >= HEART_RATE_HIGH) ? GColorRed : GColorGreen;
   }
@@ -1204,6 +1339,11 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (is_special_time()) {
     s_state = ROBOT_GOAL_REACHED;
     s_anim_phase = 0;
+  }
+
+  if (is_birthday_today() && !s_birthday_greeted_today) {
+    s_birthday_greeted_today = true;
+    show_speech_text("Happy birthday!");
   }
 
   // tick_handler runs every SECOND_UNIT tick, so this must also check
@@ -1280,7 +1420,16 @@ static void update_step_streak(void) {
     persist_write_int(PERSIST_KEY_STREAK_LAST_DAY, today_day);
   }
 
-  if (streak > 1) {
+  // Milestones (1 week, 1 month) get a bigger celebration - see the
+  // s_big_celebration checks in draw_confetti()'s caller and
+  // anim_timer_callback()'s ROBOT_GOAL_REACHED duration.
+  s_big_celebration = (streak == 7 || streak == 30);
+
+  if (streak == 7) {
+    snprintf(s_streak_buffer, sizeof(s_streak_buffer), "1 week streak!!");
+  } else if (streak == 30) {
+    snprintf(s_streak_buffer, sizeof(s_streak_buffer), "1 month streak!!");
+  } else if (streak > 1) {
     snprintf(s_streak_buffer, sizeof(s_streak_buffer), "%d-day streak!", streak);
   } else {
     snprintf(s_streak_buffer, sizeof(s_streak_buffer), "Goal hit!");
@@ -1471,6 +1620,10 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *sunset_tuple = dict_find(iter, MESSAGE_KEY_SUNSET_MINUTES);
   Tuple *wind_tuple = dict_find(iter, MESSAGE_KEY_WIND_SPEED_KMH);
   Tuple *uv_tuple = dict_find(iter, MESSAGE_KEY_UV_INDEX);
+  Tuple *step_goal_tuple = dict_find(iter, MESSAGE_KEY_STEP_GOAL);
+  Tuple *accent_tuple = dict_find(iter, MESSAGE_KEY_ACCENT_COLOR_HEX);
+  Tuple *bday_month_tuple = dict_find(iter, MESSAGE_KEY_BIRTHDAY_MONTH);
+  Tuple *bday_day_tuple = dict_find(iter, MESSAGE_KEY_BIRTHDAY_DAY);
 
   if (temp_tuple) {
     snprintf(s_weather_buffer, sizeof(s_weather_buffer), "%d\xC2\xB0",
@@ -1486,6 +1639,29 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   if (wind_tuple) s_wind_speed_kmh = (int)wind_tuple->value->int32;
   if (uv_tuple) s_uv_index = (int)uv_tuple->value->int32;
   if (sunrise_tuple || sunset_tuple || wind_tuple || uv_tuple) layer_mark_dirty(s_robot_layer);
+
+  if (step_goal_tuple) {
+    s_step_goal = (int)step_goal_tuple->value->int32;
+    persist_write_int(PERSIST_KEY_STEP_GOAL, s_step_goal);
+    update_steps();  // refreshes the progress bar % and "Goal!" text against the new goal
+  }
+  if (accent_tuple) {
+    int hex = (int)accent_tuple->value->int32;
+    apply_accent_color(GColorFromHEX(hex));
+    persist_write_int(PERSIST_KEY_ACCENT_HEX, hex);
+    layer_mark_dirty(s_robot_layer);
+    layer_mark_dirty(s_steps_layer);
+    layer_mark_dirty(s_weather_layer);
+  }
+  if (bday_month_tuple) {
+    s_birthday_month = (int)bday_month_tuple->value->int32;
+    persist_write_int(PERSIST_KEY_BIRTHDAY_MONTH, s_birthday_month);
+  }
+  if (bday_day_tuple) {
+    s_birthday_day = (int)bday_day_tuple->value->int32;
+    persist_write_int(PERSIST_KEY_BIRTHDAY_DAY, s_birthday_day);
+  }
+  if (bday_month_tuple || bday_day_tuple) layer_mark_dirty(s_robot_layer);
 
   evaluate_state();
 }
@@ -1563,8 +1739,26 @@ static void window_unload(Window *window) {
 }
 
 // ---------------- INIT ----------------
+// ---------------- CONFIG PERSISTENCE ----------------
+// Loads step goal / accent color / birthday from persistent storage
+// (survives app restarts), falling back to defaults / unset. Must run
+// before the first draw, since s_accent_color/s_accent_dim start
+// zero-valued otherwise.
+static void load_config(void) {
+  s_step_goal = persist_exists(PERSIST_KEY_STEP_GOAL)
+      ? persist_read_int(PERSIST_KEY_STEP_GOAL) : DEFAULT_STEP_GOAL;
+  int accent_hex = persist_exists(PERSIST_KEY_ACCENT_HEX)
+      ? persist_read_int(PERSIST_KEY_ACCENT_HEX) : DEFAULT_ACCENT_HEX;
+  apply_accent_color(GColorFromHEX(accent_hex));
+  s_birthday_month = persist_exists(PERSIST_KEY_BIRTHDAY_MONTH)
+      ? persist_read_int(PERSIST_KEY_BIRTHDAY_MONTH) : 0;
+  s_birthday_day = persist_exists(PERSIST_KEY_BIRTHDAY_DAY)
+      ? persist_read_int(PERSIST_KEY_BIRTHDAY_DAY) : 0;
+}
+
 static void init(void) {
   srand(time(NULL));
+  load_config();
 
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {

@@ -2,6 +2,58 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.13.0 - 2026-09-08
+
+### Added
+- **Configurable step goal and accent color**, via a phone-app config
+  page (a plain hand-rolled HTML form opened as a `data:` URL from
+  `src/pkjs/index.js`, no Clay dependency or hosted page needed).
+  `STEP_GOAL` and `ACCENT_COLOR` (formerly compile-time `#define`s) are
+  now runtime `s_step_goal`/`s_accent_color`/`s_accent_dim` variables,
+  loaded from persistent storage at startup and updated live via new
+  `STEP_GOAL`/`ACCENT_COLOR_HEX` AppMessage keys. `dim_color()` derives
+  the dimmed variant of *any* chosen accent color by dropping each RGB
+  channel one quantization step (Pebble's GColor8 channels are 2 bits;
+  this reproduces the original hand-picked ACCENT_DIM from ACCENT_COLOR
+  exactly, and generalizes to arbitrary user-chosen colors).
+- **Achievement badges**: hitting a 7-day or 30-day step-goal streak
+  triggers a bigger celebration than an ordinary daily goal - a
+  gold/chrome confetti palette with more pieces, a longer
+  `ROBOT_GOAL_REACHED` duration (40 phases vs. 20), and a distinct
+  phrase ("1 week streak!!" / "1 month streak!!").
+- **Birthday mode**: set an optional birthday (month/day, no year - it
+  recurs every year) on the same config page. On that day, Robi wears a
+  party hat all day (drawn regardless of activity, like the weather
+  icon) and shows a one-time "Happy birthday!" greeting.
+- **Seasonal costumes**: a pumpkin hat during Halloween week (Oct
+  25-31) and a Santa hat during the run-up to Christmas (Dec 15-25),
+  drawn with the same priority-ordered dispatcher as the birthday hat
+  (birthday > Halloween > Christmas).
+
+  All three head decorations are capped to rise no higher than
+  `head.origin.y - 6` - the robot_layer is only 76px tall and
+  head.origin.y itself is usually just 1-11px from the layer's own top
+  edge, so anything taller gets clipped. This matches the antenna's own
+  ball, which already sits safely at that height across every pose.
+
+  Verified: accent color and step goal via the real AppMessage pipeline
+  (`pebble send-app-message`, including catching and fixing a
+  copy-paste hex arithmetic error in the test itself, not the app);
+  birthday mode the same way, after discovering `pebble send-app-message
+  --int A=1 B=2` in one invocation only reliably delivers one of the two
+  keys in this sandbox (sending them as two separate invocations fixed
+  it - a test-tool quirk, not an app bug); Halloween/Christmas costumes
+  via `emu-set-time` date jumps, which caught a real bug (initial hat
+  heights extended above head.origin.y far enough to clip off the top of
+  the layer) now fixed per the height-budget note above. Achievement
+  confetti was verified by code review rather than a live capture: every
+  attempt to isolate `ROBOT_GOAL_REACHED` from being reset by a stray
+  `evaluate_state()` call (weather fetch, minute-tick, *and* HealthService
+  events all independently trigger it) still didn't hold the state long
+  enough to screenshot, so this substitutes a logic trace of the
+  (simple, already-compiled) branching on top of the already-proven
+  confetti mechanism.
+
 ## 1.12.0 - 2026-09-08
 
 ### Added

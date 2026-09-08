@@ -1,7 +1,7 @@
 {
   "name": "robi",
   "author": "Oguz Yarimtepe",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "keywords": [
     "pebble-app",
     "pebble-time-2",
@@ -24,7 +24,7 @@
       "watchface": true
     },
     "capabilities": ["health", "location"],
-    "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER", "SUNRISE_MINUTES", "SUNSET_MINUTES", "WIND_SPEED_KMH", "UV_INDEX"],
+    "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER", "SUNRISE_MINUTES", "SUNSET_MINUTES", "WIND_SPEED_KMH", "UV_INDEX", "STEP_GOAL", "ACCENT_COLOR_HEX", "BIRTHDAY_MONTH", "BIRTHDAY_DAY"],
     "resources": {
       "media": []
     }
