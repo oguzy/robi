@@ -24,6 +24,8 @@ typedef enum {
   ROBOT_EATING,
   ROBOT_CYCLING,
   ROBOT_AWAY,
+  ROBOT_DANCING,
+  ROBOT_STRETCHING,
   ROBOT_WALKING,
   ROBOT_RUNNING,
   ROBOT_GOAL_REACHED,
@@ -114,7 +116,8 @@ static bool is_special_time(void) {
 // pick_idle_activity() instead of just standing still.
 static bool is_idle_family(RobotState s) {
   return s == ROBOT_IDLE || s == ROBOT_READING || s == ROBOT_WORKING ||
-         s == ROBOT_EATING || s == ROBOT_CYCLING || s == ROBOT_AWAY;
+         s == ROBOT_EATING || s == ROBOT_CYCLING || s == ROBOT_AWAY ||
+         s == ROBOT_DANCING || s == ROBOT_STRETCHING;
 }
 
 static WeatherMood current_weather_mood(void) {
@@ -238,8 +241,8 @@ static void anim_timer_callback(void *data) {
   bool needs_smooth_anim =
       (s_state == ROBOT_WALKING || s_state == ROBOT_RUNNING ||
        s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
-       s_state == ROBOT_GOAL_REACHED || s_show_speech ||
-       weather_anim_active || jump_mood_active() ||
+       s_state == ROBOT_GOAL_REACHED || s_state == ROBOT_DANCING ||
+       s_show_speech || weather_anim_active || jump_mood_active() ||
        s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
@@ -660,6 +663,25 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       bob = -(int)(abs(sine_wave(5, TRIG_MAX_ANGLE / 8)));
       arm_swing = -6;
       break;
+    // Rare idle easter eggs (see pick_idle_activity()) - a quick upbeat
+    // wiggle and a slow side-to-side stretch, distinct in both tempo and
+    // motion shape from the regular idle-family activities.
+    case ROBOT_DANCING: {
+      int wiggle = sine_wave(4, TRIG_MAX_ANGLE / 5);
+      bob = -(abs(sine_wave(3, TRIG_MAX_ANGLE / 5)));
+      tilt = wiggle / 2;
+      arm_swing = wiggle;
+      leg_swing = -wiggle / 2;
+      x_offset = s_robot_x_offset;
+      break;
+    }
+    case ROBOT_STRETCHING: {
+      int lean = sine_wave(3, TRIG_MAX_ANGLE / 24);
+      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      tilt = lean;
+      x_offset = s_robot_x_offset;
+      break;
+    }
     case ROBOT_IDLE:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
       x_offset = s_robot_x_offset;
@@ -1127,6 +1149,8 @@ static const char *const s_working_phrases[] = { "busy...", "almost done" };
 static const char *const s_eating_phrases[] = { "yum!", "so good" };
 static const char *const s_cycling_phrases[] = { "let's ride!", "wheee!" };
 static const char *const s_away_phrases[] = { "brb!", "be right back" };
+static const char *const s_dancing_phrases[] = { "dance time!", "wheee!" };
+static const char *const s_stretching_phrases[] = { "stretchy...", "ahh, better" };
 
 // Called by tick_handler roughly every 10-19s while nothing else is going
 // on (walking/weather/etc. all take priority in evaluate_state()). Picks a
@@ -1142,6 +1166,26 @@ static void pick_idle_activity(void) {
   // sideways over time instead of sitting frozen in the center - even when
   // the activity itself doesn't change.
   s_wander_target = (rand() % 101) - 50;
+
+  // Rare idle easter eggs: a 1-in-8 chance to dance or stretch instead of
+  // the regular pool below, so they read as an occasional treat rather
+  // than a normal rotation option (which would make them unremarkable).
+  if (rand() % 8 == 0) {
+    RobotState egg = (rand() % 2 == 0) ? ROBOT_DANCING : ROBOT_STRETCHING;
+    if (egg != s_state) {
+      s_state = egg;
+      s_anim_phase = 0;
+      layer_mark_dirty(s_robot_layer);
+      if (rand() % 5 < 3) {
+        const char *phrase = (egg == ROBOT_DANCING)
+            ? s_dancing_phrases[rand() % (sizeof(s_dancing_phrases) / sizeof(s_dancing_phrases[0]))]
+            : s_stretching_phrases[rand() % (sizeof(s_stretching_phrases) / sizeof(s_stretching_phrases[0]))];
+        show_speech_text(phrase);
+      }
+    }
+    s_idle_activity_countdown = 10 + rand() % 10;
+    return;
+  }
 
   RobotState pool[8];
   int n = 0;

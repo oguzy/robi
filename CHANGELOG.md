@@ -2,6 +2,17 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.6.0 - 2026-09-08
+
+### Added
+- Two rare idle easter eggs: `ROBOT_DANCING` (a quick upbeat wiggle -
+  fast tempo, tilt + arm/leg swing) and `ROBOT_STRETCHING` (a slow
+  side-to-side lean). `pick_idle_activity()` has a 1-in-8 chance per
+  reroll to pick one of these instead of the regular pool, so they read
+  as an occasional treat rather than a normal rotation option. Both are
+  full idle-family members (weather/calm mood layer onto them normally,
+  blink/smile micro-expressions apply, wander drift works).
+
 ## 1.5.0 - 2026-09-08
 
 ### Added

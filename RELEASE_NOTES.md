@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.6.0
+
+- **Dancing & stretching** — two rare idle easter eggs: every so often
+  Robi breaks into a quick dance wiggle or a slow stretch instead of the
+  usual reading/working/cycling rotation.
+
 ## 1.5.0
 
 - **Step-goal streaks** — hitting your daily step goal now builds a
