@@ -1,5 +1,12 @@
 # Release Notes
 
+## 1.7.0
+
+- **Smarter shake reactions** — shake Robi while it's reading, working,
+  eating, cycling, or sleeping and it now reacts to being interrupted
+  ("lost my page!", "wait, working!") instead of the same generic
+  greeting every time.
+
 ## 1.6.0
 
 - **Dancing & stretching** — two rare idle easter eggs: every so often

@@ -1133,12 +1133,39 @@ static void update_step_streak(void) {
   show_speech_text(s_streak_buffer);
 }
 
-// Shake reaction: pick a random greeting word and show it in a speech
-// bubble alongside a wave.
+// Shake reaction: a plain greeting most of the time, but a few states get
+// an interrupted-activity remark instead of the generic wave, so the
+// reaction feels aware of what Robi was actually doing.
 static const char *const s_greetings[] = { "Hi!", "Hello!", "Hoi!" };
+static const char *const s_shake_reading_phrases[] = { "hey, reading!", "lost my page!" };
+static const char *const s_shake_working_phrases[] = { "wait, working!", "hold that thought" };
+static const char *const s_shake_eating_phrases[] = { "wait, eating!", "watch the snack!" };
+static const char *const s_shake_cycling_phrases[] = { "whoa, pedaling!", "hang on!" };
+static const char *const s_shake_sleepy_phrases[] = { "five more min...", "zzz...hm?" };
 
 static void trigger_speech(void) {
-  show_speech_text(s_greetings[rand() % (sizeof(s_greetings) / sizeof(s_greetings[0]))]);
+  const char *phrase = NULL;
+  switch (s_state) {
+    case ROBOT_READING:
+      phrase = s_shake_reading_phrases[rand() % (sizeof(s_shake_reading_phrases) / sizeof(s_shake_reading_phrases[0]))];
+      break;
+    case ROBOT_WORKING:
+      phrase = s_shake_working_phrases[rand() % (sizeof(s_shake_working_phrases) / sizeof(s_shake_working_phrases[0]))];
+      break;
+    case ROBOT_EATING:
+      phrase = s_shake_eating_phrases[rand() % (sizeof(s_shake_eating_phrases) / sizeof(s_shake_eating_phrases[0]))];
+      break;
+    case ROBOT_CYCLING:
+      phrase = s_shake_cycling_phrases[rand() % (sizeof(s_shake_cycling_phrases) / sizeof(s_shake_cycling_phrases[0]))];
+      break;
+    case ROBOT_SLEEPY:
+      phrase = s_shake_sleepy_phrases[rand() % (sizeof(s_shake_sleepy_phrases) / sizeof(s_shake_sleepy_phrases[0]))];
+      break;
+    default:
+      phrase = s_greetings[rand() % (sizeof(s_greetings) / sizeof(s_greetings[0]))];
+      break;
+  }
+  show_speech_text(phrase);
 }
 
 // Small unprompted remarks for when the robot settles into a new idle

@@ -2,6 +2,17 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.7.0 - 2026-09-08
+
+### Added
+- Context-aware shake reactions: `trigger_speech()` used to always show
+  a generic greeting ("Hi!"/"Hello!"/"Hoi!") regardless of what Robi was
+  doing. It now checks `s_state` and shows an interrupted-activity remark
+  for reading, working, eating, cycling, and sleepy instead (e.g. "lost
+  my page!" while reading), falling back to the generic greeting for
+  every other state (idle, dancing, stretching, away, walking, running,
+  goal-reached).
+
 ## 1.6.0 - 2026-09-08
 
 ### Added
