@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.10.0
+
+- **Dusk & dawn dimming** — Robi dims a little around real sunrise and
+  sunset (using your location's actual times, not a fixed schedule),
+  same as the low-battery look.
+
 ## 1.9.0
 
 - **Battery at a glance** — shake Robi and the weather row briefly shows

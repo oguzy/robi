@@ -2,6 +2,30 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.10.0 - 2026-09-08
+
+### Added
+- Sunrise/sunset-based dimming, independent of the hardcoded 22:00-06:00
+  `ROBOT_SLEEPY` window. `src/pkjs/index.js` now requests Open-Meteo's
+  `daily=sunrise,sunset&timezone=auto` alongside the existing current
+  weather, converts the returned local ISO timestamps to minutes-since-
+  midnight, and sends them as new `SUNRISE_MINUTES`/`SUNSET_MINUTES`
+  AppMessage keys. On the watch, `is_dusk_or_dawn()` returns true within
+  `DUSK_DAWN_WINDOW_MIN` (30 min) of either time, and `current_accent_color()`
+  now dims for dusk/dawn the same way it already does for low battery,
+  reusing the existing visual language rather than a full palette swap.
+
+  Verified the boundary arithmetic (no data yet, at/just-outside the
+  window on both sides, midday) with a direct simulation, and the OR
+  logic combining battery + dusk in `current_accent_color()`. Chasing
+  this live in the emulator hit two dead ends worth noting for later: a
+  forced dusk override in `window_load()` was silently overwritten
+  moments later by the real (non-dusk) sunrise/sunset from the actual
+  Open-Meteo fetch racing it, and `pebble logs` produced no output at
+  all in this sandbox across every attempt this session (unrelated to
+  app behavior) - not something a future change should rely on for
+  verification here.
+
 ## 1.9.0 - 2026-09-08
 
 ### Added

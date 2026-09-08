@@ -78,6 +78,8 @@ static char s_heart_buffer[12] = "--";
 static char s_conditions[16] = "";
 static int s_steps_count = 0;
 static int s_heart_rate = 0;
+static int s_sunrise_min = -1;  // minutes since midnight, local time; -1 = not received yet
+static int s_sunset_min = -1;
 
 static bool s_blink = false;
 static bool s_bounce = false;
@@ -179,12 +181,29 @@ static bool restless_mood_active(void) {
   return is_behind_pace() && s_state == ROBOT_IDLE;
 }
 
+// Sunrise/sunset dimming: true for the half hour on either side of
+// sunrise or sunset (from PKJS - see src/pkjs/index.js), independent of
+// the hardcoded 22:00-06:00 sleep window used for ROBOT_SLEEPY. Requires
+// real sunrise/sunset data (-1 means "not received yet").
+#define DUSK_DAWN_WINDOW_MIN 30
+
+static bool is_dusk_or_dawn(void) {
+  if (s_sunrise_min < 0 || s_sunset_min < 0) return false;
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  int minutes = t->tm_hour * 60 + t->tm_min;
+  return abs(minutes - s_sunrise_min) <= DUSK_DAWN_WINDOW_MIN ||
+         abs(minutes - s_sunset_min) <= DUSK_DAWN_WINDOW_MIN;
+}
+
 // Low battery: robot's own accent lighting (eyes, antenna tip, chest core)
 // dims from ACCENT_COLOR to ACCENT_DIM, and idle blinking slows down (see
 // tick_handler) - a visible "powering down" look doubling as a low-battery
 // cue, rather than a text warning competing with the rest of the face.
+// Dusk/dawn dimming reuses the same visual language rather than a full
+// separate palette swap.
 static GColor current_accent_color(void) {
-  return s_low_battery ? ACCENT_DIM : ACCENT_COLOR;
+  return (s_low_battery || is_dusk_or_dawn()) ? ACCENT_DIM : ACCENT_COLOR;
 }
 
 // ---------------- STATE EVALUATION ----------------
@@ -1383,6 +1402,8 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *temp_tuple = dict_find(iter, MESSAGE_KEY_TEMPERATURE);
   Tuple *cond_tuple = dict_find(iter, MESSAGE_KEY_CONDITIONS);
+  Tuple *sunrise_tuple = dict_find(iter, MESSAGE_KEY_SUNRISE_MINUTES);
+  Tuple *sunset_tuple = dict_find(iter, MESSAGE_KEY_SUNSET_MINUTES);
 
   if (temp_tuple) {
     snprintf(s_weather_buffer, sizeof(s_weather_buffer), "%d\xC2\xB0",
@@ -1393,6 +1414,9 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     strncpy(s_conditions, cond_tuple->value->cstring, sizeof(s_conditions) - 1);
     s_conditions[sizeof(s_conditions) - 1] = '\0';
   }
+  if (sunrise_tuple) s_sunrise_min = (int)sunrise_tuple->value->int32;
+  if (sunset_tuple) s_sunset_min = (int)sunset_tuple->value->int32;
+  if (sunrise_tuple || sunset_tuple) layer_mark_dirty(s_robot_layer);
 
   evaluate_state();
 }

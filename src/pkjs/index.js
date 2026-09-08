@@ -6,7 +6,8 @@
  *
  * Requires package.json to have:
  *   "capabilities": ["location"],
- *   "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER"],
+ *   "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER",
+ *                   "SUNRISE_MINUTES", "SUNSET_MINUTES"],
  *   "enableMultiJS": true
  *
  * Place this file at: src/pkjs/index.js
@@ -42,12 +43,23 @@ function weatherCodeToCondition(code) {
   return 'Unknown';
 }
 
+// Open-Meteo returns daily sunrise/sunset as local time strings (e.g.
+// "2026-09-08T06:32") when timezone=auto is set - pull out just the
+// minutes-since-midnight so the watch can compare against its own clock
+// without needing to parse dates or handle timezones itself.
+function isoTimeToMinutes(isoLocalString) {
+  var timePart = isoLocalString.split('T')[1];
+  var parts = timePart.split(':');
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
 function locationSuccess(pos) {
   // Open-Meteo: free weather API, no key required
   var url = 'https://api.open-meteo.com/v1/forecast?' +
       'latitude=' + pos.coords.latitude +
       '&longitude=' + pos.coords.longitude +
-      '&current=temperature_2m,weather_code';
+      '&current=temperature_2m,weather_code' +
+      '&daily=sunrise,sunset&timezone=auto';
 
   xhrRequest(url, 'GET', function(responseText) {
     var json = JSON.parse(responseText);
@@ -58,6 +70,11 @@ function locationSuccess(pos) {
       'TEMPERATURE': temperature,
       'CONDITIONS': conditions
     };
+
+    if (json.daily && json.daily.sunrise && json.daily.sunset) {
+      dictionary['SUNRISE_MINUTES'] = isoTimeToMinutes(json.daily.sunrise[0]);
+      dictionary['SUNSET_MINUTES'] = isoTimeToMinutes(json.daily.sunset[0]);
+    }
 
     Pebble.sendAppMessage(dictionary,
       function(e) { console.log('Weather info sent to Pebble successfully!'); },
