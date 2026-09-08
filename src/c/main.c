@@ -80,6 +80,8 @@ static int s_steps_count = 0;
 static int s_heart_rate = 0;
 static int s_sunrise_min = -1;  // minutes since midnight, local time; -1 = not received yet
 static int s_sunset_min = -1;
+static int s_wind_speed_kmh = -1;  // -1 = not received yet
+static int s_uv_index = -1;
 
 static bool s_blink = false;
 static bool s_bounce = false;
@@ -135,6 +137,23 @@ static WeatherMood current_weather_mood(void) {
   if (strcmp(s_conditions, "Snow") == 0) return WEATHER_MOOD_COLD;
   if (strcmp(s_conditions, "Clear") == 0) return WEATHER_MOOD_SUN;
   return WEATHER_MOOD_NONE;
+}
+
+// Wind and UV are independent numeric signals from PKJS (see
+// src/pkjs/index.js), not tied to the CONDITIONS text - e.g. UV can be
+// high even when it's not literally "Clear" (thin high cloud, altitude).
+// Both are layered on top of whatever mood/state is already showing,
+// same as every other mood in this file, rather than becoming their own
+// exclusive states.
+#define WIND_HIGH_KMH 25  // ~"moderate breeze" and up
+#define UV_HIGH 6         // WHO UV index: 6-7 is "high"
+
+static bool is_windy(void) {
+  return s_wind_speed_kmh >= WIND_HIGH_KMH;
+}
+
+static bool is_uv_high(void) {
+  return s_uv_index >= UV_HIGH;
 }
 
 // Excited mood: heart rate at/above the same HEART_RATE_HIGH threshold
@@ -282,13 +301,15 @@ static void anim_timer_callback(void *data) {
   WeatherMood mood = current_weather_mood();
   bool weather_anim_active = is_idle_family(s_state) &&
       (mood == WEATHER_MOOD_RAIN || mood == WEATHER_MOOD_COLD);
+  bool windy_anim_active = is_idle_family(s_state) && is_windy();
 
   bool needs_smooth_anim =
       (s_state == ROBOT_WALKING || s_state == ROBOT_RUNNING ||
        s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
        s_state == ROBOT_GOAL_REACHED || s_state == ROBOT_DANCING ||
-       s_show_speech || weather_anim_active || jump_mood_active() ||
-       restless_mood_active() || s_robot_x_offset != s_wander_target);
+       s_show_speech || weather_anim_active || windy_anim_active ||
+       jump_mood_active() || restless_mood_active() ||
+       s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
                                      anim_timer_callback, NULL);
@@ -772,6 +793,13 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     } else if (mood == WEATHER_MOOD_COLD) {
       tilt += sine_wave(1, TRIG_MAX_ANGLE / 6);
     }
+
+    // Wind is a separate numeric signal (not part of the CONDITIONS
+    // text), so it stacks with whatever weather mood is already applying
+    // - a windy rainy day leans into gusts on top of the rain droop.
+    if (is_windy()) {
+      tilt += sine_wave(3, TRIG_MAX_ANGLE / 10);
+    }
   }
 
   // Excited mood: same big hop bob as ROBOT_GOAL_REACHED, layered on top
@@ -822,7 +850,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   int eye_w = 9, eye_h_open = 10, eye_h = eye_h_open;
   if (s_blink) eye_h = 2;
   else if (s_state == ROBOT_GOAL_REACHED || s_show_speech || s_show_smile) eye_h = 11;
-  else if (is_idle_family(s_state) && mood == WEATHER_MOOD_SUN) eye_h = 4;
+  else if (is_idle_family(s_state) && (mood == WEATHER_MOOD_SUN || is_uv_high())) eye_h = 4;
   else if (is_idle_family(s_state) && mood == WEATHER_MOOD_RAIN) eye_h = 6;
   else if (calm_mood_active() && mood == WEATHER_MOOD_NONE) eye_h = 7;
 
@@ -1404,6 +1432,8 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *cond_tuple = dict_find(iter, MESSAGE_KEY_CONDITIONS);
   Tuple *sunrise_tuple = dict_find(iter, MESSAGE_KEY_SUNRISE_MINUTES);
   Tuple *sunset_tuple = dict_find(iter, MESSAGE_KEY_SUNSET_MINUTES);
+  Tuple *wind_tuple = dict_find(iter, MESSAGE_KEY_WIND_SPEED_KMH);
+  Tuple *uv_tuple = dict_find(iter, MESSAGE_KEY_UV_INDEX);
 
   if (temp_tuple) {
     snprintf(s_weather_buffer, sizeof(s_weather_buffer), "%d\xC2\xB0",
@@ -1416,7 +1446,9 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   }
   if (sunrise_tuple) s_sunrise_min = (int)sunrise_tuple->value->int32;
   if (sunset_tuple) s_sunset_min = (int)sunset_tuple->value->int32;
-  if (sunrise_tuple || sunset_tuple) layer_mark_dirty(s_robot_layer);
+  if (wind_tuple) s_wind_speed_kmh = (int)wind_tuple->value->int32;
+  if (uv_tuple) s_uv_index = (int)uv_tuple->value->int32;
+  if (sunrise_tuple || sunset_tuple || wind_tuple || uv_tuple) layer_mark_dirty(s_robot_layer);
 
   evaluate_state();
 }

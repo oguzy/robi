@@ -2,6 +2,30 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.11.0 - 2026-09-08
+
+### Added
+- Wind and UV reactions, layered on top of whatever mood/activity is
+  already showing rather than becoming their own exclusive states (same
+  pattern as weather/excited/calm). `src/pkjs/index.js` now also
+  requests `wind_speed_10m,uv_index` in the same `current=` Open-Meteo
+  call (confirmed both are supported directly, no separate `hourly`
+  fetch needed) and sends them as `WIND_SPEED_KMH`/`UV_INDEX`. On the
+  watch: `is_windy()` (>= `WIND_HIGH_KMH`, 25 km/h) adds a gust-tilt sway
+  to any idle-family activity, stacking with rain/cold if both apply;
+  `is_uv_high()` (>= `UV_HIGH`, 6) squints the eyes independently of the
+  `CONDITIONS` text, since UV can be high without literal "Clear" skies.
+
+  Verified with a direct simulation of both threshold checks, and
+  visually in the emulator: disabling both the watch-side
+  `request_weather()` and PKJS's auto-fetch-on-ready (reverted before
+  this commit) to avoid the real fetch racing a forced override -
+  learned from chasing the same race on sunrise/sunset - a held idle
+  frame showed clearly squinted eyes, and consecutive screenshots 1s
+  apart showed a consistent ~754px diff (tilt affects the whole figure)
+  at the fast animation cadence, confirming the sway renders and
+  animates.
+
 ## 1.10.0 - 2026-09-08
 
 ### Added

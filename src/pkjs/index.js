@@ -7,7 +7,8 @@
  * Requires package.json to have:
  *   "capabilities": ["location"],
  *   "messageKeys": ["TEMPERATURE", "CONDITIONS", "REQUEST_WEATHER",
- *                   "SUNRISE_MINUTES", "SUNSET_MINUTES"],
+ *                   "SUNRISE_MINUTES", "SUNSET_MINUTES",
+ *                   "WIND_SPEED_KMH", "UV_INDEX"],
  *   "enableMultiJS": true
  *
  * Place this file at: src/pkjs/index.js
@@ -58,7 +59,7 @@ function locationSuccess(pos) {
   var url = 'https://api.open-meteo.com/v1/forecast?' +
       'latitude=' + pos.coords.latitude +
       '&longitude=' + pos.coords.longitude +
-      '&current=temperature_2m,weather_code' +
+      '&current=temperature_2m,weather_code,wind_speed_10m,uv_index' +
       '&daily=sunrise,sunset&timezone=auto';
 
   xhrRequest(url, 'GET', function(responseText) {
@@ -74,6 +75,12 @@ function locationSuccess(pos) {
     if (json.daily && json.daily.sunrise && json.daily.sunset) {
       dictionary['SUNRISE_MINUTES'] = isoTimeToMinutes(json.daily.sunrise[0]);
       dictionary['SUNSET_MINUTES'] = isoTimeToMinutes(json.daily.sunset[0]);
+    }
+    if (typeof json.current.wind_speed_10m === 'number') {
+      dictionary['WIND_SPEED_KMH'] = Math.round(json.current.wind_speed_10m);
+    }
+    if (typeof json.current.uv_index === 'number') {
+      dictionary['UV_INDEX'] = Math.round(json.current.uv_index);
     }
 
     Pebble.sendAppMessage(dictionary,

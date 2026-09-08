@@ -1,5 +1,10 @@
 # Release Notes
 
+## 1.11.0
+
+- **Wind & UV reactions** — Robi leans into gusts on windy days and
+  squints against strong UV, on top of whatever it's already doing.
+
 ## 1.10.0
 
 - **Dusk & dawn dimming** — Robi dims a little around real sunrise and
