@@ -2,6 +2,16 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.2.0 - 2026-09-08
+
+### Added
+- Excited mood: when heart rate is at/above `HEART_RATE_HIGH` (same
+  threshold that turns the heart readout red), walking, cycling, and
+  reading get an extra hop layered on top of their own motion (stride,
+  pedal, page-turn) - reusing `ROBOT_GOAL_REACHED`'s big sine bob via a
+  new `is_excited()` / `jump_mood_active()` pair, following the same
+  "layer on top, don't replace" pattern as weather mood.
+
 ## 1.1.3 - 2026-09-08
 
 ### Fixed

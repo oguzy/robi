@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.2.0
+
+- **Excited hop** — when your heart rate spikes (same threshold that
+  turns the heart readout red), Robi throws in an extra bounce while
+  walking, cycling, or reading, on top of whatever it was already doing.
+
 ## 1.1.3
 
 - Fixed a permanent shiver/shake that could show up right when Robi

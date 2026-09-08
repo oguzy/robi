@@ -120,6 +120,19 @@ static WeatherMood current_weather_mood(void) {
   return WEATHER_MOOD_NONE;
 }
 
+// Excited mood: heart rate at/above the same HEART_RATE_HIGH threshold
+// already used to turn the heart readout red. Layered as an extra hop on
+// top of walking/cycling/reading, the same way weather mood layers onto
+// idle-family activities instead of replacing them.
+static bool is_excited(void) {
+  return s_heart_rate >= HEART_RATE_HIGH;
+}
+
+static bool jump_mood_active(void) {
+  return is_excited() &&
+      (s_state == ROBOT_WALKING || s_state == ROBOT_CYCLING || s_state == ROBOT_READING);
+}
+
 // ---------------- STATE EVALUATION ----------------
 static void evaluate_state(void) {
   // Goal check uses the cached count from update_steps() (refreshed once a
@@ -200,7 +213,8 @@ static void anim_timer_callback(void *data) {
       (s_state == ROBOT_WALKING || s_state == ROBOT_RUNNING ||
        s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
        s_state == ROBOT_GOAL_REACHED || s_show_speech ||
-       weather_anim_active || s_robot_x_offset != s_wander_target);
+       weather_anim_active || jump_mood_active() ||
+       s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
                                      anim_timer_callback, NULL);
@@ -656,6 +670,13 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     } else if (mood == WEATHER_MOOD_COLD) {
       tilt += sine_wave(1, TRIG_MAX_ANGLE / 6);
     }
+  }
+
+  // Excited mood: same big hop bob as ROBOT_GOAL_REACHED, layered on top
+  // of walking/cycling/reading's own motion instead of replacing it, so
+  // the stride/pedal/page-turn keeps going underneath the hop.
+  if (jump_mood_active()) {
+    bob += -(int)(abs(sine_wave(5, TRIG_MAX_ANGLE / 8)));
   }
 
   if (s_show_speech) arm_swing = -6;
