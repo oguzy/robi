@@ -597,6 +597,21 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     case ROBOT_WEATHER_COLD:
       tilt = sine_wave(1, TRIG_MAX_ANGLE / 6);
       break;
+    case ROBOT_WEATHER_SUN:
+      // Same calm idle bob as the other idle-family states, just with the
+      // sun squint applied to the eyes below - it had no case here at all,
+      // which left the robot dead still while sunny.
+      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
+      break;
+    case ROBOT_WEATHER_RAIN: {
+      // A slouched "droop": slow downward bob (positive, opposite polarity
+      // from the cheerful idle hop) plus a slight head tilt - previously
+      // had no case here either, so it just stood frozen in the rain.
+      int droop = sine_wave(2, TRIG_MAX_ANGLE / 14);
+      bob = abs(droop) / 2;
+      tilt = droop / 6;
+      break;
+    }
     case ROBOT_IDLE:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
       x_offset = s_robot_x_offset;

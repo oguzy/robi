@@ -1,5 +1,12 @@
 # Release Notes
 
+## 1.1.1
+
+- Fixed Robi standing completely frozen in sunny or rainy weather — those
+  two reactions were missing their body-language animation entirely.
+  Robi now has a calm bob in the sun and a slow droop in the rain, same
+  as its other idle behaviors.
+
 ## 1.1.0
 
 - **Heart rate readout** — a color-coded heart (green normally, red at or

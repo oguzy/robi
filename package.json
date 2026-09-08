@@ -1,7 +1,7 @@
 {
   "name": "robi",
   "author": "Oguz Yarimtepe",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},

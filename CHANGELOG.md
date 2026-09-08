@@ -2,6 +2,19 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.1.1 - 2026-09-08
+
+### Fixed
+- Robot stood completely frozen whenever the weather-reactive states
+  (`ROBOT_WEATHER_SUN`, `ROBOT_WEATHER_RAIN`) were active - the drawing
+  switch in `robot_layer_update_proc()` had no `case` for either of them,
+  so `bob`/`tilt`/`x_offset` stayed at 0 (only the eye height changed).
+  `evaluate_state()` forces one of these states any time it's sunny or
+  raining and re-checks every second, so the robot would latch there and
+  never move. Added a calm idle bob for sun and a slow downward "droop"
+  bob/tilt for rain, matching the "sun squint, rain droop" body language
+  described for these states.
+
 ## 1.1.0 - 2026-09-08
 
 ### Fixed
