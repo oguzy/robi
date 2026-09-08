@@ -23,11 +23,21 @@ typedef enum {
   ROBOT_WALKING,
   ROBOT_RUNNING,
   ROBOT_GOAL_REACHED,
-  ROBOT_WEATHER_SUN,
-  ROBOT_WEATHER_RAIN,
-  ROBOT_WEATHER_COLD,
   ROBOT_SLEEPY
 } RobotState;
+
+// Weather reactions (sun squint, rain droop, cold shiver) are no longer
+// exclusive states - they used to completely replace whatever idle
+// activity was showing (and lock the robot into a near-static pose for as
+// long as that weather held), which fought the "random moves" idle
+// wander. Instead they're a mood layered as an eye/tilt/bob modifier on
+// top of whichever idle-family activity is already playing.
+typedef enum {
+  WEATHER_MOOD_NONE,
+  WEATHER_MOOD_SUN,
+  WEATHER_MOOD_RAIN,
+  WEATHER_MOOD_COLD
+} WeatherMood;
 
 // ROBOT_AWAY plays out as a scripted sub-timeline keyed off s_anim_phase:
 // walk off-screen, vanish entirely for a bit, walk back in. Phase units are
@@ -101,6 +111,15 @@ static bool is_idle_family(RobotState s) {
          s == ROBOT_EATING || s == ROBOT_CYCLING || s == ROBOT_AWAY;
 }
 
+static WeatherMood current_weather_mood(void) {
+  if (strcmp(s_conditions, "Rain") == 0 || strcmp(s_conditions, "Drizzle") == 0) {
+    return WEATHER_MOOD_RAIN;
+  }
+  if (strcmp(s_conditions, "Snow") == 0) return WEATHER_MOOD_COLD;
+  if (strcmp(s_conditions, "Clear") == 0) return WEATHER_MOOD_SUN;
+  return WEATHER_MOOD_NONE;
+}
+
 // ---------------- STATE EVALUATION ----------------
 static void evaluate_state(void) {
   // Goal check uses the cached count from update_steps() (refreshed once a
@@ -129,11 +148,10 @@ static void evaluate_state(void) {
 
   if (is_night()) { s_state = ROBOT_SLEEPY; return; }
 
-  if (strcmp(s_conditions, "Rain") == 0 || strcmp(s_conditions, "Drizzle") == 0) {
-    s_state = ROBOT_WEATHER_RAIN; return;
-  }
-  if (strcmp(s_conditions, "Snow") == 0) { s_state = ROBOT_WEATHER_COLD; return; }
-  if (strcmp(s_conditions, "Clear") == 0) { s_state = ROBOT_WEATHER_SUN; return; }
+  // Weather no longer forces its own exclusive state here - see
+  // current_weather_mood() and its use in robot_layer_update_proc(),
+  // which layers the reaction on top of whatever idle activity is active
+  // instead of replacing it.
 
   // Nothing else applies. If we're arriving here fresh (previous state
   // wasn't already one of the idle-family states), drop into plain idle and
@@ -169,12 +187,15 @@ static void anim_timer_callback(void *data) {
     s_robot_x_offset = 0;
   }
 
+  WeatherMood mood = current_weather_mood();
+  bool weather_anim_active = is_idle_family(s_state) &&
+      (mood == WEATHER_MOOD_RAIN || mood == WEATHER_MOOD_COLD);
+
   bool needs_smooth_anim =
       (s_state == ROBOT_WALKING || s_state == ROBOT_RUNNING ||
        s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
-       s_state == ROBOT_GOAL_REACHED || s_state == ROBOT_WEATHER_RAIN ||
-       s_state == ROBOT_WEATHER_COLD || s_show_speech ||
-       s_robot_x_offset != s_wander_target);
+       s_state == ROBOT_GOAL_REACHED || s_show_speech ||
+       weather_anim_active || s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
                                      anim_timer_callback, NULL);
@@ -594,24 +615,6 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       bob = -(int)(abs(sine_wave(5, TRIG_MAX_ANGLE / 8)));
       arm_swing = -6;
       break;
-    case ROBOT_WEATHER_COLD:
-      tilt = sine_wave(1, TRIG_MAX_ANGLE / 6);
-      break;
-    case ROBOT_WEATHER_SUN:
-      // Same calm idle bob as the other idle-family states, just with the
-      // sun squint applied to the eyes below - it had no case here at all,
-      // which left the robot dead still while sunny.
-      bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
-      break;
-    case ROBOT_WEATHER_RAIN: {
-      // A slouched "droop": slow downward bob (positive, opposite polarity
-      // from the cheerful idle hop) plus a slight head tilt - previously
-      // had no case here either, so it just stood frozen in the rain.
-      int droop = sine_wave(2, TRIG_MAX_ANGLE / 14);
-      bob = abs(droop) / 2;
-      tilt = droop / 6;
-      break;
-    }
     case ROBOT_IDLE:
       bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 30)));
       x_offset = s_robot_x_offset;
@@ -633,6 +636,21 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       break;
     default:
       break;
+  }
+
+  // Weather mood layered on top of whichever idle-family activity is
+  // playing, rather than replacing it - so reading/working/cycling/etc.
+  // keep happening in the rain instead of the robot getting stuck in a
+  // single "weather reaction" pose for as long as that weather holds.
+  WeatherMood mood = current_weather_mood();
+  if (is_idle_family(s_state)) {
+    if (mood == WEATHER_MOOD_RAIN) {
+      int droop = sine_wave(2, TRIG_MAX_ANGLE / 14);
+      bob += abs(droop) / 2;
+      tilt += droop / 6;
+    } else if (mood == WEATHER_MOOD_COLD) {
+      tilt += sine_wave(1, TRIG_MAX_ANGLE / 6);
+    }
   }
 
   if (s_show_speech) arm_swing = -6;
@@ -669,9 +687,9 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   // ---- eyes ----
   int eye_w = 9, eye_h_open = 10, eye_h = eye_h_open;
   if (s_blink) eye_h = 2;
-  else if (s_state == ROBOT_WEATHER_SUN) eye_h = 4;
   else if (s_state == ROBOT_GOAL_REACHED || s_show_speech || s_show_smile) eye_h = 11;
-  else if (s_state == ROBOT_WEATHER_RAIN) eye_h = 6;
+  else if (is_idle_family(s_state) && mood == WEATHER_MOOD_SUN) eye_h = 4;
+  else if (is_idle_family(s_state) && mood == WEATHER_MOOD_RAIN) eye_h = 6;
 
   int eye_y = visor.origin.y + (visor.size.h - eye_h) / 2;
   int eye_gap = 6;
@@ -948,9 +966,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     }
   }
 
-  if (is_idle_family(s_state) || s_state == ROBOT_SLEEPY ||
-      s_state == ROBOT_WEATHER_SUN || s_state == ROBOT_WEATHER_RAIN ||
-      s_state == ROBOT_WEATHER_COLD) {
+  if (is_idle_family(s_state) || s_state == ROBOT_SLEEPY) {
     evaluate_state();
   }
 

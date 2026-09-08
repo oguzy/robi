@@ -2,6 +2,21 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.1.2 - 2026-09-08
+
+### Changed
+- Weather reactions (sun squint, rain droop, cold shiver) are no longer
+  exclusive states. `evaluate_state()` used to force the robot into a
+  dedicated `ROBOT_WEATHER_SUN`/`RAIN`/`COLD` state every second while
+  that weather held, which completely blocked the random idle activities
+  (reading, working, eating, cycling, wandering off) from ever showing -
+  in effect, the robot was stuck in a single near-static pose for as long
+  as it was sunny, rainy, or cold. Weather is now a mood applied as an
+  eye/tilt/bob modifier on top of whichever idle-family activity is
+  already playing, so the random idle variety keeps happening regardless
+  of weather. `ROBOT_WEATHER_SUN`/`RAIN`/`COLD` are removed from
+  `RobotState`; added `WeatherMood` + `current_weather_mood()` instead.
+
 ## 1.1.1 - 2026-09-08
 
 ### Fixed

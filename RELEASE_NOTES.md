@@ -1,5 +1,12 @@
 # Release Notes
 
+## 1.1.2
+
+- Robi no longer gets stuck in one pose for as long as the weather holds.
+  Sun/rain/cold reactions now layer on top of whatever Robi is already
+  doing, so reading, working, cycling, and wandering off keep happening
+  rain or shine.
+
 ## 1.1.1
 
 - Fixed Robi standing completely frozen in sunny or rainy weather — those
