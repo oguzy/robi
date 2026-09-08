@@ -2,6 +2,36 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.12.0 - 2026-09-08
+
+### Added
+- Wake-up transition: coming out of the sleep scene (22:00-06:00) now
+  plays a short groggy `ROBOT_WAKING` stretch (~2.5s: slow lean, one arm
+  drifting up, half-lidded eyes) with a "good morning!"/"yaaawn~" speech
+  bubble, instead of snapping straight into a normal idle activity.
+  `evaluate_state()` intercepts the `ROBOT_SLEEPY` -> not-night
+  transition specifically (not just any non-idle state, so this doesn't
+  fire after e.g. `ROBOT_GOAL_REACHED`), and `anim_timer_callback()`
+  settles it into `ROBOT_IDLE` after 25 phases, mirroring the existing
+  `ROBOT_GOAL_REACHED` pattern. `ROBOT_WAKING` is deliberately excluded
+  from `is_idle_family()` and from `tick_handler`'s evaluate-again gate
+  (same as `ROBOT_GOAL_REACHED`/mid-`ROBOT_AWAY`), so a stray
+  minute-tick or weather update can't reset it mid-transition.
+
+  This was the last of the ten originally-suggested feature ideas
+  (mood animations, battery dimming, streaks, easter eggs, context-aware
+  shake, activity nudge, tap-to-cycle row, dusk/dawn dimming, wind/UV,
+  and this wake-up scene), each shipped as its own release (1.3.0 to
+  1.12.0). Verified the state-machine transitions (night -> sleepy,
+  sleepy -> waking, tick_handler's gate correctly excluding waking, and
+  the phase-25 settle-out) with a direct simulation; a live emulator
+  capture of the transition was attempted (as with sunrise/sunset and
+  wind/UV) but `emu-set-time` jumps appear to deliver catch-up ticks that
+  don't preserve real per-second pacing, making the ~2.5s window
+  unreliable to catch via screenshot regardless of jump size - a sandbox
+  limitation rather than an application defect, per the logic trace of
+  tick_handler's gate above.
+
 ## 1.11.0 - 2026-09-08
 
 ### Added

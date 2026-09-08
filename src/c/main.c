@@ -30,7 +30,8 @@ typedef enum {
   ROBOT_WALKING,
   ROBOT_RUNNING,
   ROBOT_GOAL_REACHED,
-  ROBOT_SLEEPY
+  ROBOT_SLEEPY,
+  ROBOT_WAKING
 } RobotState;
 
 // Weather reactions (sun squint, rain droop, cold shiver) are no longer
@@ -57,6 +58,7 @@ typedef enum {
 // tick_handler, which comes earlier in the file than its definition.
 static void pick_idle_activity(void);
 static void update_step_streak(void);
+static void trigger_wake_greeting(void);
 
 static Window *s_window;
 static Layer *s_robot_layer;
@@ -254,6 +256,17 @@ static void evaluate_state(void) {
 
   if (is_night()) { s_state = ROBOT_SLEEPY; return; }
 
+  // Coming out of the sleep scene specifically (not just any non-idle
+  // state) gets its own short groggy transition instead of snapping
+  // straight into a normal idle activity - anim_timer_callback settles
+  // it into ROBOT_IDLE once the transition plays out.
+  if (s_state == ROBOT_SLEEPY) {
+    s_state = ROBOT_WAKING;
+    s_anim_phase = 0;
+    trigger_wake_greeting();
+    return;
+  }
+
   // Weather no longer forces its own exclusive state here - see
   // current_weather_mood() and its use in robot_layer_update_proc(),
   // which layers the reaction on top of whatever idle activity is active
@@ -291,6 +304,12 @@ static void anim_timer_callback(void *data) {
     s_idle_activity_countdown = 0;
   }
 
+  if (s_state == ROBOT_WAKING && s_anim_phase > 25) {
+    s_state = ROBOT_IDLE;
+    s_anim_phase = 0;
+    s_idle_activity_countdown = 0;
+  }
+
   if (s_state == ROBOT_AWAY && s_anim_phase > AWAY_DONE_AT + 20) {
     // Scripted sequence finished a while ago and nothing rerolled it yet
     // (idle_activity_countdown can outlast the ~5.5s script) - just settle
@@ -307,8 +326,8 @@ static void anim_timer_callback(void *data) {
       (s_state == ROBOT_WALKING || s_state == ROBOT_RUNNING ||
        s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
        s_state == ROBOT_GOAL_REACHED || s_state == ROBOT_DANCING ||
-       s_show_speech || weather_anim_active || windy_anim_active ||
-       jump_mood_active() || restless_mood_active() ||
+       s_state == ROBOT_WAKING || s_show_speech || weather_anim_active ||
+       windy_anim_active || jump_mood_active() || restless_mood_active() ||
        s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
@@ -729,6 +748,16 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       bob = -(int)(abs(sine_wave(5, TRIG_MAX_ANGLE / 8)));
       arm_swing = -6;
       break;
+    // Groggy wake-up transition (see evaluate_state()) - a slow stretch
+    // with both arms drifting up, playing out for a couple seconds
+    // before anim_timer_callback settles into a normal idle activity.
+    case ROBOT_WAKING: {
+      int stretch = sine_wave(2, TRIG_MAX_ANGLE / 20);
+      bob = -(abs(stretch));
+      tilt = stretch / 2;
+      arm_swing = -8;
+      break;
+    }
     // Rare idle easter eggs (see pick_idle_activity()) - a quick upbeat
     // wiggle and a slow side-to-side stretch, distinct in both tempo and
     // motion shape from the regular idle-family activities.
@@ -853,6 +882,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   else if (is_idle_family(s_state) && (mood == WEATHER_MOOD_SUN || is_uv_high())) eye_h = 4;
   else if (is_idle_family(s_state) && mood == WEATHER_MOOD_RAIN) eye_h = 6;
   else if (calm_mood_active() && mood == WEATHER_MOOD_NONE) eye_h = 7;
+  else if (s_state == ROBOT_WAKING) eye_h = 6;
 
   int eye_y = visor.origin.y + (visor.size.h - eye_h) / 2;
   int eye_gap = 6;
@@ -1291,6 +1321,13 @@ static void trigger_speech(void) {
       break;
   }
   show_speech_text(phrase);
+}
+
+// Shown once on the ROBOT_WAKING transition (see evaluate_state()).
+static const char *const s_wake_phrases[] = { "good morning!", "yaaawn~" };
+
+static void trigger_wake_greeting(void) {
+  show_speech_text(s_wake_phrases[rand() % (sizeof(s_wake_phrases) / sizeof(s_wake_phrases[0]))]);
 }
 
 // Small unprompted remarks for when the robot settles into a new idle

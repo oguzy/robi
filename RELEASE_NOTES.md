@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.12.0
+
+- **Wake-up scene** — Robi doesn't just snap awake at 6am anymore. A
+  short groggy stretch and a "good morning!" greeting play first, before
+  settling back into its normal idle behaviors.
+
 ## 1.11.0
 
 - **Wind & UV reactions** — Robi leans into gusts on windy days and
