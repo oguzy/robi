@@ -2,6 +2,20 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.8.0 - 2026-09-08
+
+### Added
+- Low-activity nudge: `is_behind_pace()` compares today's steps against
+  a simple linear pace target for the hour of day (`STEP_GOAL` spread
+  over 24h, with a pass for hour < 12 so it doesn't nag before most
+  people have had a chance to walk anywhere). When well behind pace and
+  otherwise just standing in plain `ROBOT_IDLE` (not reading/working/
+  etc.), the robot gets an impatient foot-tap layered on top of the
+  normal idle bob via `restless_mood_active()`, plus a 1-in-3 chance per
+  idle reroll of a nudge line ("let's get moving!") independent of
+  whether the activity actually changed, since plain idle recurring
+  without a state change would otherwise rarely trigger it.
+
 ## 1.7.0 - 2026-09-08
 
 ### Added

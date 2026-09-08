@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.8.0
+
+- **Low-activity nudge** — if you're well behind pace on steps for the
+  time of day, Robi gets a little impatient while idle (a foot-tap, and
+  an occasional "let's get moving!").
+
 ## 1.7.0
 
 - **Smarter shake reactions** — shake Robi while it's reading, working,

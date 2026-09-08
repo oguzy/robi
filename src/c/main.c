@@ -153,6 +153,26 @@ static bool calm_mood_active(void) {
   return is_calm() && is_idle_family(s_state);
 }
 
+// Low-activity nudge: compares today's steps against a simple linear
+// pace target for the hour of day (STEP_GOAL spread over 24h) rather
+// than anything walking-hours-aware, since that's plenty to notice
+// "way behind" without needing sunrise/activity-window data. The
+// morning gets a pass (hour < 12) so it doesn't nag before most people
+// have had a chance to walk anywhere.
+static bool is_behind_pace(void) {
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  if (t->tm_hour < 12) return false;
+  int expected = (STEP_GOAL * t->tm_hour) / 24;
+  return s_steps_count < expected / 2;
+}
+
+// Only applied to plain ROBOT_IDLE (not reading/working/etc.) - a restless
+// foot-tap only makes sense when Robi is otherwise just standing there.
+static bool restless_mood_active(void) {
+  return is_behind_pace() && s_state == ROBOT_IDLE;
+}
+
 // Low battery: robot's own accent lighting (eyes, antenna tip, chest core)
 // dims from ACCENT_COLOR to ACCENT_DIM, and idle blinking slows down (see
 // tick_handler) - a visible "powering down" look doubling as a low-battery
@@ -243,7 +263,7 @@ static void anim_timer_callback(void *data) {
        s_state == ROBOT_CYCLING || s_state == ROBOT_AWAY ||
        s_state == ROBOT_GOAL_REACHED || s_state == ROBOT_DANCING ||
        s_show_speech || weather_anim_active || jump_mood_active() ||
-       s_robot_x_offset != s_wander_target);
+       restless_mood_active() || s_robot_x_offset != s_wander_target);
 
   s_anim_timer = app_timer_register(needs_smooth_anim ? 100 : 600,
                                      anim_timer_callback, NULL);
@@ -736,6 +756,12 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
     bob += -(int)(abs(sine_wave(5, TRIG_MAX_ANGLE / 8)));
   }
 
+  // Low-activity nudge: a quick impatient foot-tap layered on top of the
+  // plain idle bob when steps are well behind pace for the hour.
+  if (restless_mood_active()) {
+    leg_swing = sine_wave(2, TRIG_MAX_ANGLE / 4);
+  }
+
   if (s_show_speech) arm_swing = -6;
   if (s_bounce) top_shift -= 2;
   int top = bounds.origin.y + top_shift;
@@ -1178,6 +1204,7 @@ static const char *const s_cycling_phrases[] = { "let's ride!", "wheee!" };
 static const char *const s_away_phrases[] = { "brb!", "be right back" };
 static const char *const s_dancing_phrases[] = { "dance time!", "wheee!" };
 static const char *const s_stretching_phrases[] = { "stretchy...", "ahh, better" };
+static const char *const s_nudge_phrases[] = { "let's get moving!", "still time for steps!", "how about a walk?" };
 
 // Called by tick_handler roughly every 10-19s while nothing else is going
 // on (walking/weather/etc. all take priority in evaluate_state()). Picks a
@@ -1251,6 +1278,15 @@ static void pick_idle_activity(void) {
       if (phrase) show_speech_text(phrase);
     }
   }
+
+  // Low-activity nudge: independent of whether the activity actually
+  // changed (plain idle is common enough in the pool that gating on a
+  // state change alone would rarely fire this), so it's checked
+  // separately with its own modest per-reroll odds instead.
+  if (next == ROBOT_IDLE && is_behind_pace() && rand() % 3 == 0) {
+    show_speech_text(s_nudge_phrases[rand() % (sizeof(s_nudge_phrases) / sizeof(s_nudge_phrases[0]))]);
+  }
+
   s_idle_activity_countdown = 10 + rand() % 10;
 }
 
