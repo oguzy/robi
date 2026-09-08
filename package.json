@@ -2,7 +2,16 @@
   "name": "robi",
   "author": "Oguz Yarimtepe",
   "version": "1.2.0",
-  "keywords": ["pebble-app"],
+  "keywords": [
+    "pebble-app",
+    "pebble-time-2",
+    "watchface",
+    "robot",
+    "health",
+    "weather",
+    "step-tracker",
+    "heart-rate"
+  ],
   "private": true,
   "dependencies": {},
   "pebble": {
