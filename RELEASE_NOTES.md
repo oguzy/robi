@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.5.0
+
+- **Step-goal streaks** — hitting your daily step goal now builds a
+  streak day over day, and Robi calls it out ("Goal hit!" or "3-day
+  streak!") that survives app restarts.
+
 ## 1.4.0
 
 - **Calm mood** — when your heart rate is nice and low, Robi settles

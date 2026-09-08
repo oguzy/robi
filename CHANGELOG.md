@@ -2,6 +2,24 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.5.0 - 2026-09-08
+
+### Added
+- Persistent step-goal streak: hitting the daily step goal now tracks a
+  day-over-day streak via `persist_write_int`/`persist_read_int` (survives
+  app restarts), shown in a speech bubble ("Goal hit!" or "N-day
+  streak!") instead of just the existing confetti celebration. Day is
+  tracked as a whole-day count (`time_start_of_today() / SECONDS_PER_DAY`)
+  so streak continuation/reset is a simple integer comparison regardless
+  of month/year boundaries. A restart on the same day after already
+  hitting the goal re-shows the current streak without double-counting.
+
+  Verified with a direct simulation of the day-transition logic (first
+  hit, same-day restart, consecutive days, missed-day reset) rather than
+  the emulator's HealthService step injection, which did not reliably
+  propagate to `health_service_sum_today()` in this sandbox (same
+  category of flakiness observed with heart-rate injection earlier).
+
 ## 1.4.0 - 2026-09-08
 
 ### Added

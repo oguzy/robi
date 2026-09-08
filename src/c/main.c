@@ -14,6 +14,8 @@
 #define TEXT_COLOR GColorWhite
 #define SPEECH_DURATION_MS 1800
 #define LOW_BATTERY_PCT 20  // at/below this (and not charging), robot visibly dims
+#define PERSIST_KEY_STREAK_COUNT 1
+#define PERSIST_KEY_STREAK_LAST_DAY 2
 
 typedef enum {
   ROBOT_IDLE,
@@ -51,6 +53,7 @@ typedef enum {
 // pick_idle_activity() (defined below, near trigger_speech) is called from
 // tick_handler, which comes earlier in the file than its definition.
 static void pick_idle_activity(void);
+static void update_step_streak(void);
 
 static Window *s_window;
 static Layer *s_robot_layer;
@@ -169,6 +172,7 @@ static void evaluate_state(void) {
     s_state = ROBOT_GOAL_REACHED;
     s_goal_celebrated_today = true;
     s_anim_phase = 0;
+    update_step_streak();
     return;
   }
 
@@ -1069,6 +1073,42 @@ static void show_speech_text(const char *text) {
 
   if (s_speech_timer) app_timer_cancel(s_speech_timer);
   s_speech_timer = app_timer_register(SPEECH_DURATION_MS, speech_hide_callback, NULL);
+}
+
+// ---------------- STEP-GOAL STREAK ----------------
+// Persisted across app restarts (persist_write/read_int survive relaunch,
+// unlike the plain static counters used elsewhere in this file). Day is
+// tracked as a whole-day count (time_start_of_today() / SECONDS_PER_DAY)
+// rather than a date string, so "yesterday" is just today's count minus 1
+// regardless of month/year boundaries.
+static char s_streak_buffer[24];
+
+static void update_step_streak(void) {
+  int today_day = (int)(time_start_of_today() / SECONDS_PER_DAY);
+  int last_day = persist_exists(PERSIST_KEY_STREAK_LAST_DAY)
+      ? persist_read_int(PERSIST_KEY_STREAK_LAST_DAY) : -1;
+  int streak = persist_exists(PERSIST_KEY_STREAK_COUNT)
+      ? persist_read_int(PERSIST_KEY_STREAK_COUNT) : 0;
+
+  if (last_day == today_day) {
+    // Goal already recorded today (e.g. app restarted after already
+    // hitting it) - don't double-count, just re-show the current streak.
+  } else if (last_day == today_day - 1) {
+    streak += 1;
+    persist_write_int(PERSIST_KEY_STREAK_COUNT, streak);
+    persist_write_int(PERSIST_KEY_STREAK_LAST_DAY, today_day);
+  } else {
+    streak = 1;
+    persist_write_int(PERSIST_KEY_STREAK_COUNT, streak);
+    persist_write_int(PERSIST_KEY_STREAK_LAST_DAY, today_day);
+  }
+
+  if (streak > 1) {
+    snprintf(s_streak_buffer, sizeof(s_streak_buffer), "%d-day streak!", streak);
+  } else {
+    snprintf(s_streak_buffer, sizeof(s_streak_buffer), "Goal hit!");
+  }
+  show_speech_text(s_streak_buffer);
 }
 
 // Shake reaction: pick a random greeting word and show it in a speech
