@@ -3,6 +3,7 @@
 // ---------- CONFIG ----------
 #define STEP_GOAL 10000
 #define HEART_RATE_HIGH 120  // bpm - heart icon/number turn red at or above this
+#define HEART_RATE_LOW 55  // bpm - at/below this (and a real reading), idle activities get a calm, slow sway
 #define ACCENT_COLOR GColorFromHEX(0x55EFEF)
 #define ACCENT_DIM GColorFromHEX(0x2F8F8F)
 #define BODY_LIGHT GColorFromHEX(0x8A9096)
@@ -133,6 +134,17 @@ static bool is_excited(void) {
 static bool jump_mood_active(void) {
   return is_excited() &&
       (s_state == ROBOT_WALKING || s_state == ROBOT_CYCLING || s_state == ROBOT_READING);
+}
+
+// Calm mood: the resting counterpart to is_excited(). s_heart_rate == 0
+// means "no reading yet", not an actual low heart rate, so that's
+// excluded explicitly rather than folded into the <= comparison.
+static bool is_calm(void) {
+  return s_heart_rate > 0 && s_heart_rate <= HEART_RATE_LOW;
+}
+
+static bool calm_mood_active(void) {
+  return is_calm() && is_idle_family(s_state);
 }
 
 // Low battery: robot's own accent lighting (eyes, antenna tip, chest core)
@@ -667,6 +679,15 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
       break;
   }
 
+  // Calm mood: a slower, smaller-amplitude sway replaces the idle-family
+  // activity's own bob (rather than adding to it, since the point is
+  // reduced energy, not extra motion) - the restful counterpart to the
+  // excited hop below. Runs before the weather block so rain/cold still
+  // layer normally on top of this calmer base.
+  if (calm_mood_active()) {
+    bob = -(abs(sine_wave(1, TRIG_MAX_ANGLE / 70)));
+  }
+
   // Weather mood layered on top of whichever idle-family activity is
   // playing, rather than replacing it - so reading/working/cycling/etc.
   // keep happening in the rain instead of the robot getting stuck in a
@@ -726,6 +747,7 @@ static void robot_layer_update_proc(Layer *layer, GContext *ctx) {
   else if (s_state == ROBOT_GOAL_REACHED || s_show_speech || s_show_smile) eye_h = 11;
   else if (is_idle_family(s_state) && mood == WEATHER_MOOD_SUN) eye_h = 4;
   else if (is_idle_family(s_state) && mood == WEATHER_MOOD_RAIN) eye_h = 6;
+  else if (calm_mood_active() && mood == WEATHER_MOOD_NONE) eye_h = 7;
 
   int eye_y = visor.origin.y + (visor.size.h - eye_h) / 2;
   int eye_gap = 6;

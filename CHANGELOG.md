@@ -2,6 +2,18 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.4.0 - 2026-09-08
+
+### Added
+- Calm mood: the resting counterpart to the excited hop. When heart rate
+  is a real reading at/below `HEART_RATE_LOW` (55bpm), idle-family
+  activities (reading, working, eating, cycling, away, idle) get a
+  slower, smaller-amplitude sway and slightly drowsy half-lidded eyes,
+  via new `is_calm()` / `calm_mood_active()`. Unlike the additive
+  weather/excited modifiers, this one replaces the idle bob (reduced
+  energy, not extra motion) but still runs before the weather block so
+  rain/cold continue to layer normally on top of the calmer base.
+
 ## 1.3.0 - 2026-09-08
 
 ### Added

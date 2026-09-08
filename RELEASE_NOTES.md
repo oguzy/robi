@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.4.0
+
+- **Calm mood** — when your heart rate is nice and low, Robi settles
+  into a slower, sleepier sway with half-lidded eyes during idle
+  activities, the relaxed counterpart to the excited hop.
+
 ## 1.3.0
 
 - **Low-battery look** — when your watch battery is low and not
