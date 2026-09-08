@@ -1,5 +1,10 @@
 # Release Notes
 
+## 1.9.0
+
+- **Battery at a glance** — shake Robi and the weather row briefly shows
+  your battery percentage instead, then switches back on its own.
+
 ## 1.8.0
 
 - **Low-activity nudge** — if you're well behind pace on steps for the

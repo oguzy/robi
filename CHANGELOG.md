@@ -2,6 +2,18 @@
 
 All notable changes to the Robi watchface are documented in this file.
 
+## 1.9.0 - 2026-09-08
+
+### Added
+- Tap-to-cycle info row: the existing shake gesture now also flashes
+  battery % (an outlined battery shape with proportional fill - green
+  while charging, red at/below `LOW_BATTERY_PCT`, accent color otherwise)
+  in place of the weather+heart row for `BATTERY_ROW_DURATION_MS` (4s),
+  then reverts on its own via `battery_row_hide_callback()`. Reuses the
+  single existing gesture rather than adding a button click-config
+  override, which would take over the launcher-open behavior users
+  expect from a watchface's SELECT button.
+
 ## 1.8.0 - 2026-09-08
 
 ### Added

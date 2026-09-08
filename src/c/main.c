@@ -13,6 +13,7 @@
 #define BG_COLOR GColorBlack
 #define TEXT_COLOR GColorWhite
 #define SPEECH_DURATION_MS 1800
+#define BATTERY_ROW_DURATION_MS 4000  // how long a shake's battery-% flash stays up
 #define LOW_BATTERY_PCT 20  // at/below this (and not charging), robot visibly dims
 #define PERSIST_KEY_STREAK_COUNT 1
 #define PERSIST_KEY_STREAK_LAST_DAY 2
@@ -98,6 +99,11 @@ static bool s_show_speech = false;
 static bool s_show_smile = false;
 static const char *s_speech_text = "Hi!";
 static AppTimer *s_speech_timer = NULL;
+
+// Tap-to-cycle info row: a shake also flashes battery % in place of the
+// weather+heart row for BATTERY_ROW_DURATION_MS, then reverts on its own.
+static bool s_show_battery_row = false;
+static AppTimer *s_battery_row_timer = NULL;
 
 // ---------------- HELPERS ----------------
 static bool is_night(void) {
@@ -1000,6 +1006,47 @@ static void draw_heart(GContext *ctx, GPoint center, int size, GColor color) {
   gpath_destroy(path);
 }
 
+// Battery-percent readout, temporarily shown in place of the row below
+// after a shake (see tap_handler / BATTERY_ROW_DURATION_MS) - a small
+// outlined battery shape with a proportional fill, green while charging,
+// red at/below LOW_BATTERY_PCT, the usual accent color otherwise.
+static void draw_battery_row(GContext *ctx, GRect bounds) {
+  BatteryChargeState charge = battery_state_service_peek();
+  int mid_y = bounds.origin.y + bounds.size.h / 2;
+
+  int batt_w = 28, batt_h = 14;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%d%%%s", charge.charge_percent, charge.is_charging ? " chg" : "");
+  GSize text_size = graphics_text_layout_get_content_size(
+      buf, s_steps_font, GRect(0, 0, bounds.size.w, bounds.size.h),
+      GTextOverflowModeFill, GTextAlignmentLeft);
+
+  int gap = 10;
+  int total_w = batt_w + 2 /* nub */ + gap + text_size.w;
+  int batt_x = bounds.origin.x + (bounds.size.w - total_w) / 2;
+  int batt_y = mid_y - batt_h / 2;
+
+  GRect body = GRect(batt_x, batt_y, batt_w, batt_h);
+  graphics_context_set_stroke_color(ctx, GColorLightGray);
+  graphics_context_set_stroke_width(ctx, 1);
+  graphics_draw_round_rect(ctx, body, 2);
+  graphics_context_set_fill_color(ctx, GColorLightGray);
+  graphics_fill_rect(ctx, GRect(batt_x + batt_w, batt_y + batt_h / 2 - 2, 2, 4), 0, GCornerNone);
+
+  GColor fill_color = charge.is_charging ? GColorGreen
+      : (charge.charge_percent <= LOW_BATTERY_PCT ? GColorRed : ACCENT_COLOR);
+  int fill_w = ((batt_w - 2) * charge.charge_percent) / 100;
+  if (fill_w > 0) {
+    graphics_context_set_fill_color(ctx, fill_color);
+    graphics_fill_rect(ctx, GRect(batt_x + 1, batt_y + 1, fill_w, batt_h - 2), 1, GCornersAll);
+  }
+
+  GRect text_rect = GRect(batt_x + batt_w + 2 + gap, bounds.origin.y, text_size.w, bounds.size.h);
+  graphics_context_set_text_color(ctx, fill_color);
+  graphics_draw_text(ctx, buf, s_steps_font, text_rect,
+                      GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+}
+
 // Weather temperature + persistent heart-rate readout, sharing one row.
 // Heart-rate: green normally, red at/above HEART_RATE_HIGH, dim gray "--"
 // when no reading is available yet (e.g. watch not snug, or emulator with
@@ -1007,6 +1054,11 @@ static void draw_heart(GContext *ctx, GPoint center, int size, GColor color) {
 static void weather_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   int mid_y = bounds.origin.y + bounds.size.h / 2;
+
+  if (s_show_battery_row) {
+    draw_battery_row(ctx, bounds);
+    return;
+  }
 
   GSize temp_size = graphics_text_layout_get_content_size(
       s_weather_buffer, s_small_font, GRect(0, 0, bounds.size.w, bounds.size.h),
@@ -1296,6 +1348,11 @@ static void bounce_reset_callback(void *data) {
   layer_mark_dirty(s_robot_layer);
 }
 
+static void battery_row_hide_callback(void *data) {
+  s_show_battery_row = false;
+  layer_mark_dirty(s_weather_layer);
+}
+
 // The OS's built-in tap detector needs a wrist-shake-level hit to fire on
 // this hardware (a normal case-tap never registers - confirmed by testing).
 // Rather than chase tap sensitivity further, a shake is now the intended
@@ -1312,6 +1369,14 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   app_timer_register(350, bounce_reset_callback, NULL);
 
   trigger_speech();
+
+  // Same gesture also flashes battery % in place of the weather+heart
+  // row for a few seconds - no separate button/tap-target needed for a
+  // second piece of info most people only want to check occasionally.
+  s_show_battery_row = true;
+  layer_mark_dirty(s_weather_layer);
+  if (s_battery_row_timer) app_timer_cancel(s_battery_row_timer);
+  s_battery_row_timer = app_timer_register(BATTERY_ROW_DURATION_MS, battery_row_hide_callback, NULL);
 }
 
 // ---------------- APPMESSAGE (weather) ----------------
@@ -1396,6 +1461,7 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
   if (s_anim_timer) app_timer_cancel(s_anim_timer);
   if (s_speech_timer) app_timer_cancel(s_speech_timer);
+  if (s_battery_row_timer) app_timer_cancel(s_battery_row_timer);
   layer_destroy(s_robot_layer);
   text_layer_destroy(s_time_layer);
   text_layer_destroy(s_date_layer);
